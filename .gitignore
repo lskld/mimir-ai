@@ -1,0 +1,52 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# VS Code (empty workspace settings — commit when intentional)
+.vscode/
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# Rider
+.idea/
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Uploaded files — keep the directory via .gitkeep, ignore content
+Mimir.API/Uploads/*
+!Mimir.API/Uploads/.gitkeep
+
+# User secrets (stored in %APPDATA%\Microsoft\UserSecrets — never in the repo)
+**/secrets.json
+
+# Local appsettings overrides that may contain secrets
+appsettings.Local.json
+appsettings.*.Local.json
+
+# Claude Code — local permission overrides are machine-specific
+.claude/settings.local.json
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml

@@ -1,0 +1,39 @@
+You are a compliance training curriculum designer. Given the following extracted regulatory
+requirements, produce a structured training outline with sections and learning objectives.
+
+Each section must reference which requirements it covers. Citations should identify the
+source chunk by page number and section heading where available.
+
+Return ONLY valid JSON matching the shape below. No markdown, no code fences, no preamble.
+
+Expected output format:
+{
+  "documentId": "{{DOCUMENT_ID}}",
+  "regulationType": "{{REGULATION_TYPE}}",
+  "generatedAt": "{{ISO_TIMESTAMP}}",
+  "sections": [
+    {
+      "title": "Section Title",
+      "description": "Brief description of this module.",
+      "learningObjectives": [
+        "Objective 1",
+        "Objective 2"
+      ],
+      "citations": [
+        {
+          "text": "Verbatim quote or paraphrase from the source document.",
+          "sourceDocument": "original-filename.pdf",
+          "pageNumber": 3,
+          "section": "Section Heading",
+          "chunkId": "00000000-0000-0000-0000-000000000000"
+        }
+      ]
+    }
+  ]
+}
+
+Requirements to cover:
+{{REQUIREMENTS}}
+
+TODO: Refine this prompt for deeper module coverage and higher-quality learning objectives.
+Consider adding role-specific context and specifying a minimum number of objectives per section.
