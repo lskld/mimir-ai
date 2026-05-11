@@ -27,5 +27,24 @@ public static class DocumentEndpoints
             var response = await documentService.GetDocumentAsync(documentId);
             return Results.Ok(response);
         });
+
+        // TODO: REMOVE BEFORE DEMO
+        app.MapGet("/api/documents/{documentId:guid}/parse", async (
+            Guid documentId,
+            IParsingService parsingService) =>
+        {
+            var chunks = await parsingService.ParseDocumentAsync(documentId);
+            return Results.Ok(new
+            {
+                ChunkCount = chunks.Count,
+                FirstChunks = chunks.Take(3).Select(c => new
+                {
+                    c.ChunkIndex,
+                    c.PageNumber,
+                    c.SectionHeading,
+                    Preview = c.Content[..Math.Min(120, c.Content.Length)]
+                })
+            });
+        });
     }
 }
