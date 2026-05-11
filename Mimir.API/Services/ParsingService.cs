@@ -1,4 +1,6 @@
 using System.Text;
+using DocumentFormat.OpenXml.Packaging;
+using Wordprocessing = DocumentFormat.OpenXml.Wordprocessing;
 using UglyToad.PdfPig;
 using Mimir.API.Data.Repositories;
 using Mimir.API.Models.Domain;
@@ -24,7 +26,7 @@ public class ParsingService(
         List<DocumentChunk> chunks = extension switch
         {
             ".pdf" => await ParsePdfAsync(document),
-            ".docx" => throw new NotImplementedException("DOCX parsing not yet implemented"),
+            ".docx" => await ParseDocxAsync(document),
             _ => throw new NotSupportedException($"Unsupported file type: {extension}")
         };
 
@@ -102,6 +104,128 @@ public class ParsingService(
             await documentRepository.UpdateDocumentStatusAsync(document.Id, "Failed");
             logger.LogError(ex, "PDF parsing failed for document {DocumentId}: {Message}", document.Id, ex.Message);
             throw new InvalidOperationException($"Failed to parse PDF document {document.Id}: {ex.Message}", ex);
+        }
+
+        return chunks;
+    }
+
+    private async Task<List<DocumentChunk>> ParseDocxAsync(Document document)
+    {
+        if (!File.Exists(document.FilePath))
+            throw new FileNotFoundException($"File not found at path: {document.FilePath}");
+
+        var chunks = new List<DocumentChunk>();
+        var chunkIndex = 0;
+
+        try
+        {
+            using var docx = WordprocessingDocument.Open(document.FilePath, false);
+            var mainPart = docx.MainDocumentPart
+                ?? throw new InvalidOperationException($"DOCX document {document.Id} has no main content");
+
+            var paragraphs = mainPart.Document?.Body?.Elements<Wordprocessing.Paragraph>().ToList() ?? [];
+
+            var buffer = new StringBuilder();
+            string? currentHeading = null;
+            var totalCharsProcessed = 0;
+            var paragraphCount = 0;
+
+            foreach (var paragraph in paragraphs)
+            {
+                var styleId = paragraph.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+                var isHeading = styleId is not null
+                    && styleId.Contains("heading", StringComparison.OrdinalIgnoreCase);
+
+                var paraText = string.Concat(paragraph.Descendants<Wordprocessing.Text>().Select(t => t.Text)).Trim();
+                if (string.IsNullOrWhiteSpace(paraText))
+                    continue;
+
+                paragraphCount++;
+
+                if (isHeading)
+                {
+                    if (buffer.Length > 0)
+                    {
+                        // Page approximation: every 3000 characters ≈ one page
+                        var pageNumber = totalCharsProcessed / 3000 + 1;
+                        foreach (var chunkText in ChunkText(buffer.ToString()))
+                        {
+                            chunks.Add(new DocumentChunk
+                            {
+                                Id = Guid.NewGuid(),
+                                DocumentId = document.Id,
+                                Content = chunkText,
+                                PageNumber = pageNumber,
+                                SectionHeading = currentHeading,
+                                ChunkIndex = chunkIndex++,
+                                CreatedAt = DateTime.UtcNow
+                            });
+                        }
+                        totalCharsProcessed += buffer.Length;
+                        buffer.Clear();
+                    }
+                    currentHeading = paraText;
+                    continue;
+                }
+
+                if (buffer.Length > 0)
+                    buffer.Append(' ');
+                buffer.Append(paraText);
+
+                if (buffer.Length > 800)
+                {
+                    // Page approximation: every 3000 characters ≈ one page
+                    var pageNumber = totalCharsProcessed / 3000 + 1;
+                    foreach (var chunkText in ChunkText(buffer.ToString()))
+                    {
+                        chunks.Add(new DocumentChunk
+                        {
+                            Id = Guid.NewGuid(),
+                            DocumentId = document.Id,
+                            Content = chunkText,
+                            PageNumber = pageNumber,
+                            SectionHeading = currentHeading,
+                            ChunkIndex = chunkIndex++,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                    totalCharsProcessed += buffer.Length;
+                    buffer.Clear();
+                }
+            }
+
+            // Flush remaining buffer content
+            if (buffer.Length > 0)
+            {
+                // Page approximation: every 3000 characters ≈ one page
+                var pageNumber = totalCharsProcessed / 3000 + 1;
+                foreach (var chunkText in ChunkText(buffer.ToString()))
+                {
+                    chunks.Add(new DocumentChunk
+                    {
+                        Id = Guid.NewGuid(),
+                        DocumentId = document.Id,
+                        Content = chunkText,
+                        PageNumber = pageNumber,
+                        SectionHeading = currentHeading,
+                        ChunkIndex = chunkIndex++,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+            }
+
+            logger.LogDebug("DOCX {DocumentId}: processed {ParagraphCount} paragraphs into {ChunkCount} chunks",
+                document.Id, paragraphCount, chunks.Count);
+        }
+        catch (InvalidOperationException)
+        {
+            throw; // Explicit structural check — not an OpenXml parsing failure
+        }
+        catch (Exception ex)
+        {
+            await documentRepository.UpdateDocumentStatusAsync(document.Id, "Failed");
+            logger.LogError(ex, "DOCX parsing failed for document {DocumentId}: {Message}", document.Id, ex.Message);
+            throw new InvalidOperationException($"Failed to parse DOCX document {document.Id}: {ex.Message}", ex);
         }
 
         return chunks;
