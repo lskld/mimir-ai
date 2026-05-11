@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Mimir.API.Models.Domain.Vault;
 
 namespace Mimir.API.Data.Repositories;
@@ -6,30 +7,36 @@ public class DocumentVaultRepository(AppDbContext context) : IDocumentVaultRepos
 {
     public async Task<DocumentAssignment> AssignDocumentAsync(DocumentAssignment assignment)
     {
-        _ = context; // TODO: context.DocumentAssignments.Add(assignment); await context.SaveChangesAsync();
-        await Task.CompletedTask;
+        context.DocumentAssignments.Add(assignment);
+        await context.SaveChangesAsync();
         return assignment;
     }
 
     public async Task<List<DocumentAssignment>> GetAssignmentsForTargetAsync(string targetType, Guid targetId)
     {
-        // TODO: return await context.DocumentAssignments.Where(a => a.TargetType == targetType && a.TargetId == targetId).ToListAsync();
-        await Task.CompletedTask;
-        return [];
+        return await context.DocumentAssignments
+            .Include(a => a.Document)
+            .Where(a => a.TargetType == targetType && a.TargetId == targetId)
+            .ToListAsync();
     }
 
+    // Returns direct role assignments only. Inheritance resolution (walking up to Department and
+    // OrganizationLevel) is handled in DocumentVaultService, not here.
     public async Task<List<DocumentAssignment>> GetAllAssignmentsForRoleAsync(Guid roleId)
     {
-        // TODO: return direct role assignments only — fetch context.DocumentAssignments
-        //       where TargetType == "Role" && TargetId == roleId
-        //       Inheritance across departments and org levels is resolved in the service layer.
-        await Task.CompletedTask;
-        return [];
+        return await context.DocumentAssignments
+            .Include(a => a.Document)
+            .Where(a => a.TargetType == "Role" && a.TargetId == roleId)
+            .ToListAsync();
     }
 
     public async Task RemoveAssignmentAsync(Guid assignmentId)
     {
-        // TODO: load assignment by Id, context.DocumentAssignments.Remove(...), await context.SaveChangesAsync();
-        await Task.CompletedTask;
+        var assignment = await context.DocumentAssignments.FindAsync(assignmentId);
+        if (assignment is null)
+            return;
+
+        context.DocumentAssignments.Remove(assignment);
+        await context.SaveChangesAsync();
     }
 }
