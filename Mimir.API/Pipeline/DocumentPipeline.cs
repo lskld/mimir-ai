@@ -1,12 +1,14 @@
+using System.Diagnostics;
+using Mimir.API.Data.Repositories;
 using Mimir.API.Models.Responses;
 using Mimir.API.Services;
 
 namespace Mimir.API.Pipeline;
 
 public class DocumentPipeline(
-    IDocumentService documentService,
     IParsingService parsingService,
     IAnalysisService analysisService,
+    IDocumentRepository documentRepository,
     ILogger<DocumentPipeline> logger) : IDocumentPipeline
 {
     private static readonly Lock _runningLock = new();
@@ -14,28 +16,56 @@ public class DocumentPipeline(
 
     public async Task<TrainingOutlineResponse> RunAsync(Guid documentId, string regulationType)
     {
-        _ = (documentService, parsingService, analysisService, logger);
-
         lock (_runningLock)
         {
-            // TODO: if _runningDocuments.Contains(documentId), throw InvalidOperationException to prevent duplicate runs
-            _runningDocuments.Add(documentId);
+            if (!_runningDocuments.Add(documentId))
+                throw new InvalidOperationException(
+                    $"Document {documentId} is already being processed.");
         }
+
+        var elapsed = Stopwatch.StartNew();
 
         try
         {
-            // TODO: await parsingService.ParseDocumentAsync(documentId)
-            // TODO: return await analysisService.AnalyzeDocumentAsync(documentId, regulationType)
-            await Task.CompletedTask;
-            throw new NotImplementedException();
+            logger.LogInformation(
+                "Pipeline started for document {DocumentId}, regulation: {RegulationType}",
+                documentId, regulationType);
+
+            var chunks = await parsingService.ParseDocumentAsync(documentId);
+            logger.LogInformation(
+                "Pipeline step 1 complete: {ChunkCount} chunks parsed for document {DocumentId}",
+                chunks.Count, documentId);
+
+            var outline = await analysisService.AnalyzeDocumentAsync(documentId, regulationType);
+            logger.LogInformation(
+                "Pipeline step 2 complete: outline generated for document {DocumentId} with {SectionCount} sections",
+                documentId, outline.Sections.Count);
+
+            elapsed.Stop();
+            logger.LogInformation(
+                "Pipeline completed for document {DocumentId} in {Elapsed:F1} seconds",
+                documentId, elapsed.Elapsed.TotalSeconds);
+
+            return outline;
         }
-        catch (NotImplementedException)
+        catch (Exception ex)
         {
-            throw;
-        }
-        catch (Exception)
-        {
-            // TODO: await documentService.UpdateDocumentStatusAsync equivalent — set status to "Failed"
+            elapsed.Stop();
+            logger.LogError(ex,
+                "Pipeline failed for document {DocumentId} after {Elapsed:F1} seconds: {Message}",
+                documentId, elapsed.Elapsed.TotalSeconds, ex.Message);
+
+            try
+            {
+                await documentRepository.UpdateDocumentStatusAsync(documentId, "Failed");
+            }
+            catch (Exception statusEx)
+            {
+                logger.LogWarning(statusEx,
+                    "Additionally failed to update document status to Failed for document {DocumentId}",
+                    documentId);
+            }
+
             throw;
         }
         finally
