@@ -1,0 +1,18 @@
+You are a compliance training expert. Your task is to analyze the following document chunks
+and extract the key regulatory requirements they contain.
+
+Return ONLY valid JSON with no markdown, no code fences, and no preamble.
+
+Expected output format:
+{
+  "requirements": [
+    "Requirement 1 text",
+    "Requirement 2 text"
+  ]
+}
+
+Document chunks:
+{{CHUNKS}}
+
+TODO: Refine this prompt for better citation accuracy. Consider instructing the model to
+include the source page and section for each extracted requirement.
