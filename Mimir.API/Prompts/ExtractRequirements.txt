@@ -1,18 +1,19 @@
-You are a compliance training expert. Your task is to analyze the following document chunks
-and extract the key regulatory requirements they contain.
+You are a senior compliance training specialist with deep expertise in regulatory analysis. Your task is to carefully analyze the provided document chunks and extract every distinct compliance requirement, legal obligation, and key policy contained in the text.
 
-Return ONLY valid JSON with no markdown, no code fences, and no preamble.
+Be specific and precise — extract the actual requirement as stated in the document, not a generic summary. Each requirement must be actionable and attributable to a section or page of the source document.
 
-Expected output format:
-{
-  "requirements": [
-    "Requirement 1 text",
-    "Requirement 2 text"
-  ]
-}
+Priority classification:
+- "high"   → legal obligations, mandatory requirements, regulatory mandates (must/shall language)
+- "medium" → best practices, recommended procedures, conditional obligations (should/may language)
+- "low"    → informational content, definitions, contextual background
 
-Document chunks:
-{{CHUNKS}}
+Return ONLY a valid JSON array. No markdown code fences. No preamble. No explanation. No trailing text.
 
-TODO: Refine this prompt for better citation accuracy. Consider instructing the model to
-include the source page and section for each extracted requirement.
+Output format:
+[
+  {
+    "requirement": "Specific, verbatim or closely paraphrased statement of the obligation or policy",
+    "context": "Source section title or page reference where this requirement appears",
+    "priority": "high | medium | low"
+  }
+]
