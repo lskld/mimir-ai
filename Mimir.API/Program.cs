@@ -25,7 +25,14 @@ builder.Services.AddScoped<IHierarchyService, HierarchyService>();
 builder.Services.AddScoped<IDocumentVaultService, DocumentVaultService>();
 builder.Services.AddScoped<IDocumentPipeline, DocumentPipeline>();
 
-// 3. CORS
+// 3. OpenAPI
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new() { Title = "Mimir API", Version = "v1" });
+});
+
+// 4. CORS
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -39,13 +46,20 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// 5. Ensure upload directory exists
+// 5. Swagger (development only)
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+// 6. Ensure upload directory exists
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "Uploads"));
 
-// 6. Middleware
+// 7. Middleware
 app.UseCors();
 
-// 7. Endpoints
+// 8. Endpoints
 app.MapDocumentEndpoints();
 app.MapAnalysisEndpoints();
 app.MapHierarchyEndpoints();
