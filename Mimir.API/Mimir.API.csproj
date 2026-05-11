@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <None Update="Prompts\*.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 
