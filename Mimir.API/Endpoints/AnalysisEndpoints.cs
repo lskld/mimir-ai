@@ -1,22 +1,32 @@
+using System.Text.Json;
 using Mimir.API.Data.Repositories;
 using Mimir.API.Models.Requests;
+using Mimir.API.Models.Responses;
 using Mimir.API.Pipeline;
 
 namespace Mimir.API.Endpoints;
 
 public static class AnalysisEndpoints
 {
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
     public static void MapAnalysisEndpoints(this WebApplication app)
     {
         app.MapPost("/api/analysis", async (
             AnalyzeDocumentRequest request,
-            IDocumentPipeline pipeline) =>
+            IServiceScopeFactory scopeFactory) =>
         {
             if (request.DocumentId == Guid.Empty || string.IsNullOrWhiteSpace(request.RegulationType))
                 return Results.BadRequest("DocumentId and RegulationType are required.");
 
-            // Fire-and-forget: run the pipeline in the background so the response is immediate.
-            _ = Task.Run(() => pipeline.RunAsync(request.DocumentId, request.RegulationType));
+            // Create a new DI scope for the background task — the request scope is disposed
+            // before Task.Run executes, which would otherwise cause ObjectDisposedException on DbContext.
+            _ = Task.Run(async () =>
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var pipeline = scope.ServiceProvider.GetRequiredService<IDocumentPipeline>();
+                await pipeline.RunAsync(request.DocumentId, request.RegulationType);
+            });
 
             return Results.Accepted(
                 $"/api/analysis/{request.DocumentId}/outline",
@@ -32,9 +42,11 @@ public static class AnalysisEndpoints
             if (outline is null)
                 return Results.NotFound();
 
-            // TODO: if outline.Status is not Approved/Draft (i.e. analysis still running), return 409
-            // TODO: deserialize outline.RawJson into TrainingOutlineResponse and return 200
-            return Results.Ok(outline);
+            if (outline.Status is not ("Draft" or "Approved"))
+                return Results.Conflict(new { message = "Analysis is still in progress." });
+
+            var response = JsonSerializer.Deserialize<TrainingOutlineResponse>(outline.RawJson, JsonOptions);
+            return Results.Ok(response);
         });
 
         app.MapPost("/api/analysis/{documentId:guid}/approve", async (
@@ -47,8 +59,8 @@ public static class AnalysisEndpoints
                 return Results.NotFound();
 
             var approved = await outlineRepository.UpdateOutlineStatusAsync(outline.Id, "Approved");
-            // TODO: deserialize approved.RawJson into TrainingOutlineResponse and return 200
-            return Results.Ok(approved);
+            var response = JsonSerializer.Deserialize<TrainingOutlineResponse>(approved.RawJson, JsonOptions);
+            return Results.Ok(response);
         });
     }
 }

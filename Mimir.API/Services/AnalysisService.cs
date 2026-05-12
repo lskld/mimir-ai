@@ -1,8 +1,5 @@
-using System.ClientModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using OpenAI;
-using OpenAI.Chat;
 using Mimir.API.Data.Repositories;
 using Mimir.API.Models.Domain;
 using Mimir.API.Models.Responses;
@@ -167,26 +164,43 @@ public class AnalysisService(
     {
         try
         {
-            var clientOptions = new OpenAIClientOptions
+            var apiKey = configuration["Groq:ApiKey"];
+            var baseUrl = configuration["Groq:BaseUrl"];
+            var model = configuration["Groq:Model"];
+
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("Authorization", apiKey);
+
+            var request = new
             {
-                Endpoint = new Uri(configuration["Groq:BaseUrl"]!)
-            };
-            var client = new OpenAIClient(
-                new ApiKeyCredential(configuration["Groq:ApiKey"]!),
-                clientOptions);
-            var chatClient = client.GetChatClient(configuration["Groq:Model"]!);
-
-            var response = await chatClient.CompleteChatAsync(
-                [new SystemChatMessage(systemPrompt), new UserChatMessage(userPrompt)],
-                new ChatCompletionOptions
+                model = model,
+                messages = new object[]
                 {
-                    Temperature = 0.3f,
-                    MaxOutputTokenCount = 4096
-                });
+                    new { role = "system", content = systemPrompt },
+                    new { role = "user", content = userPrompt }
+                },
+                temperature = 0.3,
+                max_tokens = 4096
+            };
 
-            var text = response.Value.Content[0].Text;
+            var content = new StringContent(
+                System.Text.Json.JsonSerializer.Serialize(request),
+                System.Text.Encoding.UTF8,
+                "application/json");
+
+            var response = await client.PostAsync($"{baseUrl}/chat/completions", content);
+            response.EnsureSuccessStatusCode();
+
+            var responseText = await response.Content.ReadAsStringAsync();
+            var json = System.Text.Json.JsonDocument.Parse(responseText);
+            var text = json.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("message")
+                .GetProperty("content")
+                .GetString();
+
             logger.LogDebug("Groq raw response: {Response}", text);
-            return text;
+            return text ?? throw new InvalidOperationException("No content in response");
         }
         catch (Exception ex)
         {
