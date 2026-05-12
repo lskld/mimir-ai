@@ -1,8 +1,11 @@
+"use client"
+
 import {
+  Eye,
   FileText,
-  Settings,
+  GraduationCap,
+  LayoutDashboard,
   ShieldCheck,
-  Users,
 } from "lucide-react"
 import {
   Sidebar,
@@ -17,14 +20,36 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from "@/components/ui/sidebar"
+import { usePathname, useRouter } from "next/navigation"
 
-export default function Home() {
+export default function DashboardLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode
+}>) {
+  const router = useRouter()
+  const pathname = usePathname()
   const menuItems = [
-    { label: "Documents", icon: FileText },
-    { label: "Roles", icon: ShieldCheck },
-    { label: "Employees", icon: Users },
-    { label: "Settings", icon: Settings },
+    { label: "Home", href: "/", icon: LayoutDashboard },
+    { label: "Documents", href: "/vault", icon: FileText },
+    { label: "Hierarchy", href: "/hierarchy", icon: ShieldCheck },
+    {
+      label: "Studio",
+      href: "/studio/dummy-training-id",
+      icon: GraduationCap,
+    },
+    {
+      label: "Employees",
+      href: "/preview/dummy-preview-id",
+      icon: Eye,
+    },
   ]
+  const isMenuItemActive = (href: string) =>
+    href === "/"
+      ? pathname === "/"
+      : pathname === href || pathname.startsWith(`${href}/`)
+  const pageTitle =
+    menuItems.find((item) => isMenuItemActive(item.href))?.label ?? "Home"
 
   return (
     <SidebarProvider>
@@ -38,7 +63,11 @@ export default function Home() {
               <SidebarMenu>
                 {menuItems.map((item) => (
                   <SidebarMenuItem key={item.label}>
-                    <SidebarMenuButton className="[&>svg]:size-[18px]">
+                    <SidebarMenuButton
+                      className="cursor-pointer [&>svg]:size-[18px]"
+                      isActive={isMenuItemActive(item.href)}
+                      onClick={() => router.push(item.href)}
+                    >
                       <item.icon />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
@@ -55,9 +84,9 @@ export default function Home() {
 
       <SidebarInset>
         <header className="flex h-14 items-center border-b px-4">
-          <h1 className="text-sm font-medium">Dashboard</h1>
+          <h1 className="text-sm font-medium">{pageTitle}</h1>
         </header>
-        <main className="flex-1 p-4">Hej</main>
+        <main className="flex-1 p-4">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   )
