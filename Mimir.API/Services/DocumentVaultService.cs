@@ -1,4 +1,5 @@
 using Mimir.API.Data.Repositories;
+using Mimir.API.Models.Domain.Hierarchy;
 using Mimir.API.Models.Domain.Vault;
 using Mimir.API.Models.Requests.Hierarchy;
 using Mimir.API.Models.Responses.Hierarchy;
@@ -79,11 +80,149 @@ public class DocumentVaultService(
             request.DocumentId, request.TargetType, request.TargetId);
     }
 
+    /// <summary>
+    /// Returns the complete set of documents visible to a role by walking the hierarchy upward:
+    /// Role → Department → OrganizationLevel. When the same document is assigned at multiple levels,
+    /// the most specific level wins: Role overrides Department, Department overrides OrganizationLevel.
+    /// </summary>
     public async Task<ResolvedDocumentSetResponse> GetResolvedDocumentSetAsync(Guid roleId)
     {
-        // TODO: Step 14 — inheritance resolution
-        await Task.CompletedTask;
-        throw new NotImplementedException();
+        // Step 1 — Load the role and walk the full hierarchy tree to collect names.
+        // GetRoleAsync includes RoleDepartment junctions (DepartmentIds populated) but does NOT
+        // ThenInclude Department entities, so each department must be fetched explicitly.
+        var role = await hierarchyRepository.GetRoleAsync(roleId);
+        if (role is null)
+            throw new KeyNotFoundException($"Role {roleId} not found");
+
+        var departments = new List<Department>();
+        var deptNames = new Dictionary<Guid, string>();
+        var orgLevelNames = new Dictionary<Guid, string>();
+
+        foreach (var rd in role.Departments)
+        {
+            var dept = await hierarchyRepository.GetDepartmentAsync(rd.DepartmentId);
+            if (dept is null) continue;
+            departments.Add(dept);
+            deptNames[dept.Id] = dept.Name;
+
+            // GetDepartmentAsync includes DepartmentOrganizationLevel junctions (OrgLevelIds
+            // populated) but does NOT ThenInclude OrganizationLevel entities — fetch each once.
+            foreach (var dol in dept.OrganizationLevels)
+            {
+                if (orgLevelNames.ContainsKey(dol.OrganizationLevelId)) continue;
+                var orgLevel = await hierarchyRepository.GetOrganizationLevelAsync(dol.OrganizationLevelId);
+                if (orgLevel is not null)
+                    orgLevelNames[orgLevel.Id] = orgLevel.Name;
+            }
+        }
+
+        var distinctOrgLevelIds = orgLevelNames.Keys.ToList();
+
+        logger.LogDebug(
+            "Resolving document set for role {RoleName} ({RoleId}): {DeptCount} departments, {OrgLevelCount} total org levels",
+            role.Name, roleId, departments.Count, distinctOrgLevelIds.Count);
+
+        // Step 2 — Collect all document assignments across all three levels.
+        var roleAssignments = await documentVaultRepository.GetAssignmentsForTargetAsync("Role", roleId);
+
+        var departmentAssignments = new List<DocumentAssignment>();
+        foreach (var dept in departments)
+        {
+            var deptAssignments = await documentVaultRepository.GetAssignmentsForTargetAsync("Department", dept.Id);
+            departmentAssignments.AddRange(deptAssignments);
+        }
+
+        var orgLevelAssignments = new List<DocumentAssignment>();
+        foreach (var orgLevelId in distinctOrgLevelIds)
+        {
+            var olAssignments = await documentVaultRepository.GetAssignmentsForTargetAsync("OrganizationLevel", orgLevelId);
+            orgLevelAssignments.AddRange(olAssignments);
+        }
+
+        logger.LogDebug(
+            "Raw assignments collected — Role: {RoleCount}, Departments: {DeptCount}, OrgLevels: {OrgLevelCount}",
+            roleAssignments.Count, departmentAssignments.Count, orgLevelAssignments.Count);
+
+        // Step 3 — Deduplicate by DocumentId using specificity priority.
+        // Process least-specific first so more-specific entries overwrite them.
+        // The dictionary value captures both the assignment entity and its provenance for the response.
+        var resolved = new Dictionary<Guid, (DocumentAssignment Assignment, string InheritedFrom, string InheritedFromName)>();
+
+        foreach (var a in orgLevelAssignments)
+            resolved[a.DocumentId] = (a, "OrganizationLevel", orgLevelNames.GetValueOrDefault(a.TargetId, "[Unknown]"));
+
+        foreach (var a in departmentAssignments)
+            resolved[a.DocumentId] = (a, "Department", deptNames.GetValueOrDefault(a.TargetId, "[Unknown]"));
+
+        foreach (var a in roleAssignments)
+            resolved[a.DocumentId] = (a, "Role", role.Name);
+
+        var totalRaw = roleAssignments.Count + departmentAssignments.Count + orgLevelAssignments.Count;
+        logger.LogDebug(
+            "After deduplication: {UniqueCount} unique documents ({DuplicatesRemoved} duplicates removed by priority resolution)",
+            resolved.Count, totalRaw - resolved.Count);
+
+        // Edge case — vault is empty
+        if (resolved.Count == 0)
+        {
+            logger.LogInformation("No documents found for role {RoleName} — vault may be empty", role.Name);
+            return new ResolvedDocumentSetResponse { RoleId = roleId, RoleName = role.Name };
+        }
+
+        // Step 4 — Map to response; defend against documents deleted after assignment.
+        // GetAssignmentsForTargetAsync always Includes Document, so a.Document is normally
+        // populated — the null branch covers the rare case of a deleted document.
+        var documents = new List<ResolvedDocumentResponse>();
+        foreach (var (assignment, inheritedFrom, inheritedFromName) in resolved.Values)
+        {
+            var fileName = assignment.Document?.OriginalFileName;
+            if (fileName is null)
+            {
+                var doc = await documentRepository.GetDocumentAsync(assignment.DocumentId);
+                if (doc is null)
+                {
+                    logger.LogWarning(
+                        "Document {DocumentId} referenced in assignment {AssignmentId} no longer exists — skipping",
+                        assignment.DocumentId, assignment.Id);
+                    continue;
+                }
+                fileName = doc.OriginalFileName;
+            }
+
+            documents.Add(new ResolvedDocumentResponse
+            {
+                DocumentId = assignment.DocumentId,
+                FileName = fileName,
+                InheritedFrom = inheritedFrom,
+                InheritedFromName = inheritedFromName,
+                TargetType = assignment.TargetType
+            });
+        }
+
+        // Role first, then Department, then OrganizationLevel; alphabetical within each group.
+        static int LevelOrder(string from) => from switch
+        {
+            "Role" => 0,
+            "Department" => 1,
+            _ => 2
+        };
+
+        documents = [.. documents.OrderBy(d => LevelOrder(d.InheritedFrom)).ThenBy(d => d.FileName)];
+
+        var finalRoleCount = documents.Count(d => d.InheritedFrom == "Role");
+        var finalDeptCount = documents.Count(d => d.InheritedFrom == "Department");
+        var finalOrgLevelCount = documents.Count(d => d.InheritedFrom == "OrganizationLevel");
+
+        logger.LogInformation(
+            "Resolved document set for role {RoleName}: {Total} documents ({RoleCount} from role, {DeptCount} from departments, {OrgLevelCount} from org levels)",
+            role.Name, documents.Count, finalRoleCount, finalDeptCount, finalOrgLevelCount);
+
+        return new ResolvedDocumentSetResponse
+        {
+            RoleId = roleId,
+            RoleName = role.Name,
+            Documents = documents
+        };
     }
 
     public async Task<List<ResolvedDocumentResponse>> GetDocumentsForTargetAsync(string targetType, Guid targetId)
