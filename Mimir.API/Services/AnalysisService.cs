@@ -22,9 +22,14 @@ public class AnalysisService(
     private record RequirementItem(
         [property: JsonPropertyName("requirement")] string Requirement,
         [property: JsonPropertyName("context")] string Context,
-        [property: JsonPropertyName("priority")] string Priority);
+        [property: JsonPropertyName("priority")] string Priority,
+        [property: JsonPropertyName("amlrArticle")] int? AmlrArticle = null);
 
-    public async Task<TrainingOutlineResponse> AnalyzeDocumentAsync(Guid documentId, string regulationType)
+    public async Task<TrainingOutlineResponse> AnalyzeDocumentAsync(
+        Guid documentId,
+        string regulationType,
+        string? roleName = null,
+        Dictionary<string, string>? riskProfile = null)
     {
         var chunks = await documentRepository.GetChunksAsync(documentId);
         if (chunks.Count == 0)
@@ -36,10 +41,28 @@ public class AnalysisService(
         var promptPath = Path.Combine(AppContext.BaseDirectory, "Prompts", "ExtractRequirements.txt");
         var systemPrompt = await File.ReadAllTextAsync(promptPath);
 
+        var roleContext = string.Empty;
+        if (!string.IsNullOrWhiteSpace(roleName))
+        {
+            roleContext = $"""
+
+                TARGET ROLE FOR TRAINING: {roleName}
+                Role Risk Profile:
+                - AML Risk: {riskProfile?.GetValueOrDefault("AmlRisk", "Medium")}
+                - Sanctions Risk: {riskProfile?.GetValueOrDefault("SanctionsRisk", "Medium")}
+                - Fraud Risk: {riskProfile?.GetValueOrDefault("FraudRisk", "Medium")}
+                - Documentation Risk: {riskProfile?.GetValueOrDefault("DocumentationRisk", "Medium")}
+                - Operational Risk: {riskProfile?.GetValueOrDefault("OperationalRisk", "Medium")}
+
+                Calibrate requirement priority based on this role's risk exposure.
+                """;
+        }
+
         var userPrompt = $"""
             Regulation type: {regulationType}
 
             Document: {document?.OriginalFileName ?? documentId.ToString()}
+            {roleContext}
 
             Document content:
             {BuildChunkContext(chunks)}
@@ -81,7 +104,7 @@ public class AnalysisService(
             .Select((r, i) => $"{i + 1}. {r.Requirement} [Context: {r.Context}] [Priority: {r.Priority}]")
             .ToList();
 
-        var outline = await GenerateOutlineAsync(requirementStrings, documentId, regulationType);
+        var outline = await GenerateOutlineAsync(requirementStrings, documentId, regulationType, roleName, riskProfile);
 
         var rawOutlineJson = JsonSerializer.Serialize(outline);
         var entity = new TrainingOutline
@@ -104,10 +127,37 @@ public class AnalysisService(
     }
 
     public async Task<TrainingOutlineResponse> GenerateOutlineAsync(
-        List<string> requirements, Guid documentId, string regulationType)
+        List<string> requirements,
+        Guid documentId,
+        string regulationType,
+        string? roleName = null,
+        Dictionary<string, string>? riskProfile = null)
     {
         var promptPath = Path.Combine(AppContext.BaseDirectory, "Prompts", "GenerateOutline.txt");
         var systemPrompt = await File.ReadAllTextAsync(promptPath);
+
+        // Inject role context into the system prompt template
+        if (!string.IsNullOrWhiteSpace(roleName) && riskProfile != null)
+        {
+            systemPrompt = systemPrompt
+                .Replace("{{ROLE_NAME}}", roleName)
+                .Replace("{{AML_RISK_LEVEL}}", riskProfile.GetValueOrDefault("AmlRisk", "Medium"))
+                .Replace("{{SANCTIONS_RISK_LEVEL}}", riskProfile.GetValueOrDefault("SanctionsRisk", "Medium"))
+                .Replace("{{FRAUD_RISK_LEVEL}}", riskProfile.GetValueOrDefault("FraudRisk", "Medium"))
+                .Replace("{{DOCUMENTATION_RISK_LEVEL}}", riskProfile.GetValueOrDefault("DocumentationRisk", "Medium"))
+                .Replace("{{OPERATIONAL_RISK_LEVEL}}", riskProfile.GetValueOrDefault("OperationalRisk", "Medium"));
+        }
+        else
+        {
+            // Generic role for document-level analysis without specific role context
+            systemPrompt = systemPrompt
+                .Replace("{{ROLE_NAME}}", "General Compliance Role")
+                .Replace("{{AML_RISK_LEVEL}}", "Medium")
+                .Replace("{{SANCTIONS_RISK_LEVEL}}", "Medium")
+                .Replace("{{FRAUD_RISK_LEVEL}}", "Medium")
+                .Replace("{{DOCUMENTATION_RISK_LEVEL}}", "Medium")
+                .Replace("{{OPERATIONAL_RISK_LEVEL}}", "Medium");
+        }
 
         var requirementsList = string.Join("\n", requirements);
         var userPrompt = $"""
