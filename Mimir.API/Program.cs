@@ -60,12 +60,24 @@ Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "Uploads
 // 7. Middleware
 app.UseCors();
 
-// 8. Endpoints
+// 8. Seed demo data if database is empty
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var hierarchyRepo = scope.ServiceProvider.GetRequiredService<IHierarchyRepository>();
+    var documentRepo = scope.ServiceProvider.GetRequiredService<IDocumentRepository>();
+    var vaultRepo = scope.ServiceProvider.GetRequiredService<IDocumentVaultRepository>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    await SeedData.InitializeAsync(context, hierarchyRepo, documentRepo, vaultRepo, logger);
+}
+
+// 9. Endpoints
 app.MapDocumentEndpoints();
 app.MapAnalysisEndpoints();
 app.MapHierarchyEndpoints();
 app.MapVaultEndpoints();
 
-// 8. TODO: validate Groq:ApiKey on startup — throw if empty so misconfiguration is caught early
+// 10. TODO: validate Groq:ApiKey on startup — throw if empty so misconfiguration is caught early
 
 app.Run();
