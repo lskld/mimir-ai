@@ -23,6 +23,7 @@ builder.Services.AddScoped<IAnalysisService, AnalysisService>();
 builder.Services.AddScoped<ICitationService, CitationService>();
 builder.Services.AddScoped<IHierarchyService, HierarchyService>();
 builder.Services.AddScoped<IDocumentVaultService, DocumentVaultService>();
+builder.Services.AddScoped<IRoleTrainingService, RoleTrainingService>();
 builder.Services.AddScoped<IDocumentPipeline, DocumentPipeline>();
 
 // 3. OpenAPI
