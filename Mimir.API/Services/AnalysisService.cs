@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GenerativeAI;
 using Mimir.API.Data.Repositories;
 using Mimir.API.Models.Domain;
 using Mimir.API.Models.Responses;
@@ -44,12 +45,20 @@ public class AnalysisService(
             {BuildChunkContext(chunks)}
             """;
 
-        var rawJson = await CallGroqAsync(systemPrompt, userPrompt);
+        var rawJson = await CallGeminiAsync(systemPrompt, userPrompt);
+
+        var cleanRequirementsJson = rawJson.Trim();
+        if (cleanRequirementsJson.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
+            cleanRequirementsJson = cleanRequirementsJson["```json".Length..].TrimStart();
+        else if (cleanRequirementsJson.StartsWith("```"))
+            cleanRequirementsJson = cleanRequirementsJson["```".Length..].TrimStart();
+        if (cleanRequirementsJson.EndsWith("```"))
+            cleanRequirementsJson = cleanRequirementsJson[..^3].TrimEnd();
 
         List<RequirementItem>? requirements;
         try
         {
-            requirements = JsonSerializer.Deserialize<List<RequirementItem>>(rawJson, JsonOptions);
+            requirements = JsonSerializer.Deserialize<List<RequirementItem>>(cleanRequirementsJson, JsonOptions);
         }
         catch (JsonException)
         {
@@ -109,7 +118,7 @@ public class AnalysisService(
             {requirementsList}
             """;
 
-        var rawJson = await CallGroqAsync(systemPrompt, userPrompt);
+        var rawJson = await CallGeminiAsync(systemPrompt, userPrompt);
 
         // Strip accidental markdown fences that some models include despite being asked not to
         var cleanJson = rawJson.Trim();
@@ -160,52 +169,28 @@ public class AnalysisService(
         return outline;
     }
 
-    private async Task<string> CallGroqAsync(string systemPrompt, string userPrompt)
+    private async Task<string> CallGeminiAsync(string systemPrompt, string userPrompt)
     {
         try
         {
-            var apiKey = configuration["Groq:ApiKey"];
-            var baseUrl = configuration["Groq:BaseUrl"];
-            var model = configuration["Groq:Model"];
+            var apiKey = configuration["Gemini:ApiKey"];
+            var modelName = configuration["Gemini:Model"];
 
-            using var client = new HttpClient();
-            client.DefaultRequestHeaders.Add("Authorization", apiKey);
+            logger.LogDebug("Gemini config - Model: {model}", modelName ?? "[NULL]");
+            logger.LogDebug("Gemini config - APIKey: {apiKey}", apiKey ?? "[NULL]");
 
-            var request = new
-            {
-                model = model,
-                messages = new object[]
-                {
-                    new { role = "system", content = systemPrompt },
-                    new { role = "user", content = userPrompt }
-                },
-                temperature = 0.3,
-                max_tokens = 4096
-            };
+            var client = new GenerativeModel(apiKey!, modelName!);
+            var response = await client.GenerateContentAsync(systemPrompt + "\n\n" + userPrompt);
 
-            var content = new StringContent(
-                System.Text.Json.JsonSerializer.Serialize(request),
-                System.Text.Encoding.UTF8,
-                "application/json");
+            var text = response.Text;
 
-            var response = await client.PostAsync($"{baseUrl}/chat/completions", content);
-            response.EnsureSuccessStatusCode();
-
-            var responseText = await response.Content.ReadAsStringAsync();
-            var json = System.Text.Json.JsonDocument.Parse(responseText);
-            var text = json.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString();
-
-            logger.LogDebug("Groq raw response: {Response}", text);
-            return text ?? throw new InvalidOperationException("No content in response");
+            logger.LogDebug("Gemini raw response: {Response}", text);
+            return text;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Groq API call failed: {Message}", ex.Message);
-            throw new InvalidOperationException($"Groq API call failed: {ex.Message}", ex);
+            logger.LogError(ex, "Gemini API call failed: {Message}", ex.Message);
+            throw new InvalidOperationException($"Gemini API call failed: {ex.Message}", ex);
         }
     }
 
