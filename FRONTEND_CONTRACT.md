@@ -6,7 +6,9 @@ This document is the complete API reference for the Mimir backend. It is written
 
 ## 1. Overview
 
-Mimir is a compliance training platform. It lets administrators upload regulatory documents (PDF or DOCX), run an AI pipeline that reads those documents and produces a structured training outline, and then assign documents to roles in an organizational hierarchy. Employees assigned to a role automatically inherit all documents assigned to that role's parent departments and the broader organization.
+Mimir is a compliance training platform grounded in regulatory documents (PDF or DOCX). It automates the complete pipeline: upload → parse → analyze → generate role-based training outlines. All training recommendations are cited to specific regulatory articles, and training depth is calibrated to each role's risk profile.
+
+**Use case**: A bank uploads the AMLR 2024/1624 anti-money laundering regulation and role-specific risk assessments. Mimir automatically generates a KYC Analyst training plan that covers high-risk topics in depth, and a Customer Advisor plan that covers foundation-level topics only — both grounded in AMLR articles.
 
 **Base URL (local development)**
 ```
@@ -14,7 +16,7 @@ http://localhost:5003
 ```
 
 **Running the backend locally**
-You need the .NET 10 SDK installed. Clone the repo, open a terminal in the project root, and run `dotnet run --project Mimir.API`. The server starts at `http://localhost:5003`. You also need a Groq API key — set it with `dotnet user-secrets set "Groq:ApiKey" "<your-key>" --project Mimir.API` before the AI analysis endpoints will work.
+You need the .NET 10 SDK installed. Clone the repo, open a terminal in the project root, and run `dotnet run --project Mimir.API`. The server starts at `http://localhost:5003`. You also need a Google Gemini API key — set it with `dotnet user-secrets set "Gemini:ApiKey" "<your-key>" --project Mimir.API` before the AI analysis endpoints will work.
 
 **General notes**
 - All request and response bodies are JSON unless the endpoint uses file upload (see §2).
@@ -478,7 +480,7 @@ Creates a new department and links it to one or more existing organization level
 
 ### `POST /api/hierarchy/roles`
 
-Creates a new role in `Draft` status and links it to one or more departments. A role must be published before documents can be assigned to it and before employees can be associated with it.
+Creates a new role in `Draft` status and links it to one or more departments. Optionally assigns risk levels (defaults to "Medium" for all risks if omitted). A role must be published before documents can be assigned to it. Training will be calibrated to the role's risk profile.
 
 **Request body** — `application/json`
 
@@ -488,15 +490,25 @@ Creates a new role in `Draft` status and links it to one or more departments. A 
   "description": "Analysts responsible for financial modelling",
   "departmentIds": [
     "22222222-2222-2222-2222-222222222222"
-  ]
+  ],
+  "amlRisk": "High",
+  "sanctionsRisk": "High",
+  "fraudRisk": "Medium",
+  "documentationRisk": "High",
+  "operationalRisk": "Medium"
 }
 ```
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `name` | string | Yes | Display name |
-| `description` | string | No | Optional description |
-| `departmentIds` | array of UUIDs | No | IDs of departments this role belongs to; can be empty (but the role cannot be published until it has at least one) |
+| Field | Type | Required | Valid values | Notes |
+|-------|------|----------|-------------|-------|
+| `name` | string | Yes | | Display name |
+| `description` | string | No | | Optional description |
+| `departmentIds` | array of UUIDs | No | | IDs of departments this role belongs to; can be empty (but role cannot be published until it has at least one) |
+| `amlRisk` | string | No | `"High"`, `"Medium"`, `"Low"` | Defaults to `"Medium"` |
+| `sanctionsRisk` | string | No | `"High"`, `"Medium"`, `"Low"` | Defaults to `"Medium"` |
+| `fraudRisk` | string | No | `"High"`, `"Medium"`, `"Low"` | Defaults to `"Medium"` |
+| `documentationRisk` | string | No | `"High"`, `"Medium"`, `"Low"` | Defaults to `"Medium"` |
+| `operationalRisk` | string | No | `"High"`, `"Medium"`, `"Low"` | Defaults to `"Medium"` |
 
 **Response — `201 Created`**
 
@@ -506,6 +518,11 @@ Creates a new role in `Draft` status and links it to one or more departments. A 
   "name": "Financial Analyst",
   "description": "Analysts responsible for financial modelling",
   "status": "Draft",
+  "amlRisk": "High",
+  "sanctionsRisk": "High",
+  "fraudRisk": "Medium",
+  "documentationRisk": "High",
+  "operationalRisk": "Medium",
   "departments": [
     {
       "id": "22222222-2222-2222-2222-222222222222",
@@ -547,6 +564,11 @@ Same shape as the create role response, with `"status": "Published"`.
   "name": "Financial Analyst",
   "description": "Analysts responsible for financial modelling",
   "status": "Published",
+  "amlRisk": "High",
+  "sanctionsRisk": "High",
+  "fraudRisk": "Medium",
+  "documentationRisk": "High",
+  "operationalRisk": "Medium",
   "departments": [
     {
       "id": "22222222-2222-2222-2222-222222222222",
@@ -564,6 +586,38 @@ Same shape as the create role response, with `"status": "Published"`.
 |--------|------|
 | `404` | Role not found |
 | `409` | Role has no linked departments — add at least one department before publishing |
+
+---
+
+### `GET /api/hierarchy/roles/{roleId}/risk-profile`
+
+Retrieves the risk exposure profile for a specific role. This endpoint is used by the frontend to display risk scores before triggering role-based training generation.
+
+**Path parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `roleId` | UUID | The ID of the published role |
+
+**Response — `200 OK`**
+
+```json
+{
+  "id": "33333333-3333-3333-3333-333333333333",
+  "name": "Financial Analyst",
+  "amlRisk": "High",
+  "sanctionsRisk": "High",
+  "fraudRisk": "Medium",
+  "documentationRisk": "High",
+  "operationalRisk": "Medium"
+}
+```
+
+**Errors**
+
+| Status | When |
+|--------|------|
+| `404` | Role not found |
 
 ---
 
@@ -695,7 +749,220 @@ Returns an empty array `[]` if no documents are directly assigned to this node.
 
 ---
 
-## 7. Data Models Reference
+## 7. Role-Based Training Generation Endpoints
+
+These endpoints orchestrate generating a risk-calibrated training program for a specific role based on its resolved document set and risk profile.
+
+### `POST /api/training/roles/{roleId}/generate`
+
+Triggers the training generation pipeline for a role. The pipeline loads the role's risk profile, collects all inherited documents via the vault, analyzes each document (if not already analyzed), and generates a combined training outline. This endpoint returns immediately with a `202 Accepted` response — the actual work happens in the background.
+
+**Path parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `roleId` | UUID | The ID of the published role |
+
+**Request body** — none
+
+**Response — `202 Accepted`**
+
+```json
+{
+  "roleId": "33333333-3333-3333-3333-333333333333",
+  "status": "Generating"
+}
+```
+
+**Polling pattern — what to do after receiving 202:**
+
+```js
+const POLL_INTERVAL_MS = 2000;
+
+async function pollForTraining(roleId) {
+  while (true) {
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+
+    const res = await fetch(
+      `http://localhost:5003/api/training/roles/${roleId}/status`
+    );
+
+    const status = await res.json();
+
+    if (status.status === "Ready") {
+      // Get the generated outline
+      const outlineRes = await fetch(
+        `http://localhost:5003/api/training/roles/${roleId}/outline`
+      );
+      const outline = await outlineRes.json();
+      return outline; // Done!
+    }
+
+    if (status.status === "Failed") {
+      throw new Error("Training generation failed");
+    }
+
+    // status === "Generating" — keep polling
+  }
+}
+```
+
+**Errors**
+
+| Status | When |
+|--------|------|
+| `404` | Role not found |
+| `409` | Role has no documents to train on (vault is empty for this role) |
+
+---
+
+### `GET /api/training/roles/{roleId}/status`
+
+Returns the current generation status for a role's training program. Use this endpoint to poll during the background generation job.
+
+**Path parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `roleId` | UUID | The ID of the role |
+
+**Response — `200 OK`**
+
+```json
+{
+  "roleId": "33333333-3333-3333-3333-333333333333",
+  "status": "Ready"
+}
+```
+
+**`status` values**
+
+| Value | Meaning |
+|-------|---------|
+| `"Pending"` | Training not yet triggered or re-triggered after reset |
+| `"Generating"` | Pipeline is running — outline is not ready yet |
+| `"Ready"` | Outline is ready; call `GET /outline` to fetch it |
+| `"Failed"` | Pipeline encountered an error; check the document status endpoints for details |
+
+**Errors**
+
+| Status | When |
+|--------|------|
+| `404` | Role not found |
+
+---
+
+### `GET /api/training/roles/{roleId}/outline`
+
+Returns the role-specific training outline generated from all inherited documents. The outline is risk-calibrated based on the role's risk profile — high-risk roles receive deeper, more comprehensive training; low-risk roles receive foundation-level modules only.
+
+**Path parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `roleId` | UUID | The ID of the published role |
+
+**Response — `200 OK`**
+
+```json
+{
+  "roleId": "33333333-3333-3333-3333-333333333333",
+  "roleName": "Financial Analyst",
+  "riskProfile": {
+    "amlRisk": "High",
+    "sanctionsRisk": "High",
+    "fraudRisk": "Medium",
+    "documentationRisk": "High",
+    "operationalRisk": "Medium"
+  },
+  "generatedAt": "2025-11-03T14:35:22Z",
+  "approved": false,
+  "sections": [
+    {
+      "title": "AML Regulatory Foundations",
+      "description": "Deep dive into AMLR obligations and risk assessment requirements.",
+      "learningObjectives": [
+        "Understand AMLR 2024/1624 Articles 9–13 governance requirements",
+        "Apply risk-based AML controls to customer profiles",
+        "Document compliance findings with regulatory citations"
+      ],
+      "regulatoryBasis": "AMLR 2024/1624 Article 10 (Risk Assessment)",
+      "citations": [
+        {
+          "text": "Financial institutions shall conduct a risk assessment to identify, assess, and understand the money laundering and terrorist financing risks.",
+          "sourceDocument": "AMLR_1624.pdf",
+          "pageNumber": 8,
+          "section": "Article 10 – Risk Assessment",
+          "chunkId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Errors**
+
+| Status | When |
+|--------|------|
+| `404` | Role not found or training outline not yet generated |
+| `409` | Training is still generating — poll status until Ready |
+
+---
+
+### `POST /api/training/roles/{roleId}/approve`
+
+Marks a training outline as approved, indicating it is ready to be assigned to employees or exported for LMS integration.
+
+**Path parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `roleId` | UUID | The ID of the role |
+
+**Request body** — none
+
+**Response — `200 OK`**
+
+Returns the approved outline (same shape as `GET /outline` above), with `"approved": true`.
+
+**Errors**
+
+| Status | When |
+|--------|------|
+| `404` | Role not found or training outline not yet generated |
+
+---
+
+### `GET /api/training/roles/{roleId}/export/scorm`
+
+Exports an approved training outline in SCORM 1.2 format, suitable for upload to any standards-compliant Learning Management System (LMS). Returns a ZIP file containing the course content and metadata.
+
+**Path parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `roleId` | UUID | The ID of the role with an approved outline |
+
+**Response — `200 OK`** — ZIP file (SCORM 1.2 package)
+
+The response has `Content-Type: application/zip` and `Content-Disposition: attachment; filename="training-{roleId}.zip"`.
+
+The ZIP contains:
+- `imsmanifest.xml` — SCORM metadata and course structure
+- `content/` — HTML modules corresponding to each section
+- `content/assets/` — CSS styling and referenced documents
+
+**Errors**
+
+| Status | When |
+|--------|------|
+| `404` | Role not found or training outline not approved |
+| `409` | Training outline exists but is not yet approved |
+
+---
+
+## 8. Data Models Reference
 
 ### `DocumentResponse`
 
@@ -784,6 +1051,11 @@ A reference to a specific passage in the source document.
 | `name` | string | No | Display name |
 | `description` | string | Yes | |
 | `status` | string | No | `"Draft"` or `"Published"` |
+| `amlRisk` | string | No | Risk level: `"High"`, `"Medium"`, or `"Low"` |
+| `sanctionsRisk` | string | No | Risk level: `"High"`, `"Medium"`, or `"Low"` |
+| `fraudRisk` | string | No | Risk level: `"High"`, `"Medium"`, or `"Low"` |
+| `documentationRisk` | string | No | Risk level: `"High"`, `"Medium"`, or `"Low"` |
+| `operationalRisk` | string | No | Risk level: `"High"`, `"Medium"`, or `"Low"` |
 | `departments` | array of `DepartmentResponse` | No | Parent departments (without their own roles nested) |
 
 ---
@@ -841,11 +1113,16 @@ One document entry in a resolved or direct document set.
 
 #### `CreateRoleRequest`
 
-| Field | Type | Required |
-|-------|------|----------|
-| `name` | string | Yes |
-| `description` | string | No |
-| `departmentIds` | array of UUID | No (defaults to empty) |
+| Field | Type | Required | Valid values | Notes |
+|-------|------|----------|-------------|-------|
+| `name` | string | Yes | | Display name |
+| `description` | string | No | | Optional description |
+| `departmentIds` | array of UUID | No (defaults to empty) | | IDs of departments this role belongs to |
+| `amlRisk` | string | No | `"High"`, `"Medium"`, `"Low"` | AML risk exposure; defaults to `"Medium"` |
+| `sanctionsRisk` | string | No | `"High"`, `"Medium"`, `"Low"` | Sanctions screening risk; defaults to `"Medium"` |
+| `fraudRisk` | string | No | `"High"`, `"Medium"`, `"Low"` | Fraud detection risk; defaults to `"Medium"` |
+| `documentationRisk` | string | No | `"High"`, `"Medium"`, `"Low"` | Documentation/compliance risk; defaults to `"Medium"` |
+| `operationalRisk` | string | No | `"High"`, `"Medium"`, `"Low"` | Operational control risk; defaults to `"Medium"` |
 
 #### `AssignDocumentRequest`
 
@@ -921,6 +1198,44 @@ Roles start as `"Draft"` and become `"Published"` via the publish endpoint. The 
 | Show in employee-facing views | No | Yes |
 | Include in resolved document sets | Yes (admin only) | Yes |
 | Can be published | Yes (if has ≥1 department) | Already published |
+
+### Risk Profiles and Training Calibration
+
+Each role has a **risk profile** — a set of five risk dimensions that describe the role's exposure to different types of compliance threats:
+
+1. **AML Risk** — Anti-money laundering exposure (e.g. KYC Analyst has High AML risk)
+2. **Sanctions Risk** — Export controls and sanctions screening exposure
+3. **Fraud Risk** — Fraud detection and prevention responsibility
+4. **Documentation Risk** — Regulatory documentation and record-keeping obligations
+5. **Operational Risk** — Operational control and process risk
+
+**How risk drives training depth:**
+
+When you trigger training generation for a role (via `POST /api/training/roles/{roleId}/generate`), Mimir's AI engine uses the role's risk profile to calibrate the depth and breadth of training:
+
+- **High-risk roles** (e.g. Compliance Officer, AML Investigator) receive:
+  - Deep, comprehensive modules covering all aspects of each regulation
+  - Multiple modules per regulatory topic (Foundation → Application → Deepening → Embedding)
+  - Detailed quiz questions and scenario-based assessments
+  - Every regulatory article cited in the source documents
+
+- **Medium-risk roles** (e.g. Sales Manager, Customer Advisor) receive:
+  - Foundation and application-level modules only
+  - Focused content covering the most critical obligations
+  - Moderate number of learning objectives and assessments
+
+- **Low-risk roles** (e.g. Receptionist, IT Operations) receive:
+  - Foundation-level modules only
+  - High-level awareness content
+  - Minimal assessments
+
+This risk-based calibration ensures compliance training is proportionate to actual risk exposure — high-risk roles get expert-level depth, low-risk roles get awareness training, and everyone gets exactly what they need.
+
+**Where to find risk profiles:**
+
+- When creating a role: set risk levels in `POST /api/hierarchy/roles`
+- Before generating training: retrieve via `GET /api/hierarchy/roles/{roleId}/risk-profile`
+- After generating training: view in the role's `TrainingOutlineResponse` under `riskProfile`
 
 ---
 

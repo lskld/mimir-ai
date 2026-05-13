@@ -7,4 +7,5 @@ public class OrganizationLevelResponse
     public string? Description { get; set; }
     public string? Geography { get; set; }
     public DateTime CreatedAt { get; set; }
+    public List<DepartmentResponse> Departments { get; set; } = [];
 }
