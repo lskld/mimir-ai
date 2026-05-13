@@ -101,6 +101,11 @@ public class HierarchyService(
             Name = request.Name.Trim(),
             Description = request.Description?.Trim(),
             Status = "Draft",
+            AmlRisk = request.AmlRisk ?? "Medium",
+            SanctionsRisk = request.SanctionsRisk ?? "Medium",
+            FraudRisk = request.FraudRisk ?? "Medium",
+            DocumentationRisk = request.DocumentationRisk ?? "Medium",
+            OperationalRisk = request.OperationalRisk ?? "Medium",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -213,6 +218,11 @@ public class HierarchyService(
             Name = role.Name,
             Description = role.Description,
             Status = role.Status,
+            AmlRisk = role.AmlRisk,
+            SanctionsRisk = role.SanctionsRisk,
+            FraudRisk = role.FraudRisk,
+            DocumentationRisk = role.DocumentationRisk,
+            OperationalRisk = role.OperationalRisk,
             Departments = linkedDepts.Select(d => MapDepartmentToResponse(d, [])).ToList()
         };
 }

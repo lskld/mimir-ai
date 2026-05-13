@@ -49,7 +49,7 @@ Phase 5 is updated with demo preparation as a dedicated step.
 
 ---
 
-## Phase 3 — Hierarchy & Vault ✅ COMPLETE (untested)
+## Phase 3 — Hierarchy & Vault ✅ COMPLETE 
 
 12. HierarchyService — CreateOrganizationLevel, CreateDepartment, CreateRole, PublishRole, GetFullHierarchy
 13. DocumentVaultService — AssignDocumentToLevel, GetDocumentsForTarget
@@ -57,12 +57,12 @@ Phase 5 is updated with demo preparation as a dedicated step.
 
 ---
 
-## Phase 3.5 — AMLR Alignment 🆕 NEW
+## Phase 3.5 — AMLR Alignment 
 
 This phase adapts the existing architecture to meet the specific Vidda Solutions
 evaluation scenario before endpoints are wired.
 
-### 15. Add RiskProfile to Role model
+### 15. Add RiskProfile to Role model ✅ COMPLETE 
 
 Add risk exposure fields directly to the Role entity:
 

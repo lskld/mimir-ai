@@ -11,6 +11,12 @@ public class Role
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    public string AmlRisk { get; set; } = "Medium";
+    public string SanctionsRisk { get; set; } = "Medium";
+    public string FraudRisk { get; set; } = "Medium";
+    public string DocumentationRisk { get; set; } = "Medium";
+    public string OperationalRisk { get; set; } = "Medium";
+
     public ICollection<RoleDepartment> Departments { get; set; } = [];
     public ICollection<DocumentAssignment> DocumentAssignments { get; set; } = [];
 }
