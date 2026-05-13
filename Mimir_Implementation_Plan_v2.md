@@ -57,13 +57,12 @@ Phase 5 is updated with demo preparation as a dedicated step.
 
 ---
 
-## Phase 3.5 — AMLR Alignment 
+## Phase 3.5 — AMLR Alignment ✅ COMPLETE 
 
 This phase adapts the existing architecture to meet the specific Vidda Solutions
 evaluation scenario before endpoints are wired.
 
-### 15. Add RiskProfile to Role model ✅ COMPLETE 
-
+### 15. Add RiskProfile to Role model 
 Add risk exposure fields directly to the Role entity:
 
 ```
