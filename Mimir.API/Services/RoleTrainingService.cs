@@ -12,12 +12,9 @@ public class RoleTrainingService(
     IOutlineRepository outlineRepository,
     ITrainingRepository trainingRepository,
     IDocumentPipeline documentPipeline,
+    IAnalysisService analysisService,
     ILogger<RoleTrainingService> logger) : IRoleTrainingService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
 
     public async Task<TrainingOutlineResponse> GenerateTrainingForRoleAsync(Guid roleId)
     {
@@ -83,27 +80,48 @@ public class RoleTrainingService(
                     "Resolved {DocumentCount} documents for role {RoleName}",
                     resolvedDocuments.Documents.Count, role.Name);
 
-                // Step 3: Analyze all documents with role context
+                // Step 3: For each document, ensure a generic outline exists, then customize for this role
                 var allOutlines = new List<TrainingOutlineResponse>();
                 foreach (var resolvedDoc in resolvedDocuments.Documents)
                 {
                     try
                     {
-                        logger.LogInformation(
-                            "Analyzing document {DocumentId} ({FileName}) for role {RoleName}",
-                            resolvedDoc.DocumentId, resolvedDoc.FileName, role.Name);
+                        // Step A: Ensure the document has a generic outline (parse + analyze once)
+                        var docOutline = await outlineRepository.GetOutlineAsync(resolvedDoc.DocumentId);
+                        if (docOutline is null)
+                        {
+                            logger.LogInformation(
+                                "Document {DocumentId} not yet analyzed — running generic pipeline first",
+                                resolvedDoc.DocumentId);
+                            await documentPipeline.RunAsync(resolvedDoc.DocumentId, "AMLR 2024/1624");
+                            docOutline = await outlineRepository.GetOutlineAsync(resolvedDoc.DocumentId);
+                        }
 
-                        allOutlines.Add(await documentPipeline.RunAsync(
-                            resolvedDoc.DocumentId,
-                            "AMLR 2024/1624",
+                        if (docOutline is null || string.IsNullOrWhiteSpace(docOutline.RawJson))
+                        {
+                            logger.LogWarning(
+                                "No outline available for document {DocumentId} after pipeline run — skipping",
+                                resolvedDoc.DocumentId);
+                            continue;
+                        }
+
+                        // Step B: Customize the generic outline for this role
+                        logger.LogInformation(
+                            "Customizing outline for role {RoleName} from document {DocumentId}",
+                            role.Name, resolvedDoc.DocumentId);
+
+                        var customized = await analysisService.CustomizeOutlineForRoleAsync(
+                            docOutline.RawJson,
                             role.Name,
-                            roleRiskProfile));
+                            roleRiskProfile);
+
+                        allOutlines.Add(customized);
                     }
                     catch (Exception ex)
                     {
                         logger.LogError(ex,
-                            "Pipeline failed for document {DocumentId} ({FileName})",
-                            resolvedDoc.DocumentId, resolvedDoc.FileName);
+                            "Failed to process document {DocumentId} for role {RoleName}",
+                            resolvedDoc.DocumentId, role.Name);
                     }
                 }
 
