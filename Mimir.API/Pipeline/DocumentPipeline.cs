@@ -14,7 +14,11 @@ public class DocumentPipeline(
     private static readonly Lock _runningLock = new();
     private static readonly HashSet<Guid> _runningDocuments = [];
 
-    public async Task<TrainingOutlineResponse> RunAsync(Guid documentId, string regulationType)
+    public async Task<TrainingOutlineResponse> RunAsync(
+        Guid documentId,
+        string regulationType,
+        string? roleName = null,
+        Dictionary<string, string>? riskProfile = null)
     {
         lock (_runningLock)
         {
@@ -27,16 +31,21 @@ public class DocumentPipeline(
 
         try
         {
-            logger.LogInformation(
-                "Pipeline started for document {DocumentId}, regulation: {RegulationType}",
-                documentId, regulationType);
+            if (string.IsNullOrEmpty(roleName))
+                logger.LogInformation(
+                    "Pipeline started for document {DocumentId}, regulation: {RegulationType}",
+                    documentId, regulationType);
+            else
+                logger.LogInformation(
+                    "Pipeline started for document {DocumentId}, regulation: {RegulationType}, role: {RoleName}",
+                    documentId, regulationType, roleName);
 
             var chunks = await parsingService.ParseDocumentAsync(documentId);
             logger.LogInformation(
                 "Pipeline step 1 complete: {ChunkCount} chunks parsed for document {DocumentId}",
                 chunks.Count, documentId);
 
-            var outline = await analysisService.AnalyzeDocumentAsync(documentId, regulationType);
+            var outline = await analysisService.AnalyzeDocumentAsync(documentId, regulationType, roleName, riskProfile);
             logger.LogInformation(
                 "Pipeline step 2 complete: outline generated for document {DocumentId} with {SectionCount} sections",
                 documentId, outline.Sections.Count);

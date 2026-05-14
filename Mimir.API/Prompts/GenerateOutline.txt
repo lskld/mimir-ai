@@ -55,7 +55,7 @@ Output format (match exactly — property names are case-sensitive):
         "Action-verb objective 3"
       ],
       "regulatoryBasis": {
-        "amlrArticle": 9 to 13,
+        "amlrArticle": "9" or "9, 10, 11" if multiple articles apply — always a string, never an integer, never an array,
         "articleTitle": "e.g., Internal policies and procedures"
       },
       "citations": [

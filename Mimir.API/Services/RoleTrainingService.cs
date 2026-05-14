@@ -83,48 +83,27 @@ public class RoleTrainingService(
                     "Resolved {DocumentCount} documents for role {RoleName}",
                     resolvedDocuments.Documents.Count, role.Name);
 
-                // Step 3: Ensure all documents have been analyzed (run pipeline if needed)
+                // Step 3: Analyze all documents with role context
                 var allOutlines = new List<TrainingOutlineResponse>();
                 foreach (var resolvedDoc in resolvedDocuments.Documents)
                 {
-                    var docOutline = await outlineRepository.GetOutlineAsync(resolvedDoc.DocumentId);
-                    if (docOutline is null)
+                    try
                     {
                         logger.LogInformation(
-                            "Document {DocumentId} ({FileName}) not yet analyzed — running pipeline",
-                            resolvedDoc.DocumentId, resolvedDoc.FileName);
-                        try
-                        {
-                            allOutlines.Add(await documentPipeline.RunAsync(resolvedDoc.DocumentId, "AMLR 2024/1624"));
-                        }
-                        catch (Exception ex)
-                        {
-                            logger.LogError(ex,
-                                "Pipeline failed for document {DocumentId} ({FileName})",
-                                resolvedDoc.DocumentId, resolvedDoc.FileName);
-                        }
+                            "Analyzing document {DocumentId} ({FileName}) for role {RoleName}",
+                            resolvedDoc.DocumentId, resolvedDoc.FileName, role.Name);
+
+                        allOutlines.Add(await documentPipeline.RunAsync(
+                            resolvedDoc.DocumentId,
+                            "AMLR 2024/1624",
+                            role.Name,
+                            roleRiskProfile));
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        logger.LogDebug(
-                            "Document {DocumentId} ({FileName}) already analyzed — reusing outline",
+                        logger.LogError(ex,
+                            "Pipeline failed for document {DocumentId} ({FileName})",
                             resolvedDoc.DocumentId, resolvedDoc.FileName);
-                        try
-                        {
-                            if (!string.IsNullOrWhiteSpace(docOutline.RawJson))
-                            {
-                                var parsed = JsonSerializer.Deserialize<TrainingOutlineResponse>(
-                                    docOutline.RawJson, JsonOptions);
-                                if (parsed is not null)
-                                    allOutlines.Add(parsed);
-                            }
-                        }
-                        catch (JsonException ex)
-                        {
-                            logger.LogWarning(ex,
-                                "Failed to parse stored outline for document {DocumentId}",
-                                resolvedDoc.DocumentId);
-                        }
                     }
                 }
 
@@ -210,7 +189,7 @@ public class RoleTrainingService(
 
         // Sort sections by regulatory basis article (if available), then by title
         mergedSections = mergedSections
-            .OrderBy(s => s.RegulatoryBasis?.AmlrArticle ?? 99)
+            .OrderBy(s => int.TryParse(s.RegulatoryBasis?.AmlrArticle?.Split(',')[0].Trim(), out var n) ? n : int.MaxValue)
             .ThenBy(s => s.Title)
             .ToList();
 
