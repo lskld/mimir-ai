@@ -16,6 +16,7 @@ builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 builder.Services.AddScoped<IOutlineRepository, OutlineRepository>();
 builder.Services.AddScoped<IHierarchyRepository, HierarchyRepository>();
 builder.Services.AddScoped<IDocumentVaultRepository, DocumentVaultRepository>();
+builder.Services.AddScoped<ITrainingRepository, TrainingRepository>();
 
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IParsingService, ParsingService>();
@@ -77,6 +78,7 @@ app.MapDocumentEndpoints();
 app.MapAnalysisEndpoints();
 app.MapHierarchyEndpoints();
 app.MapVaultEndpoints();
+app.MapRoleTrainingEndpoints();
 
 // 10. TODO: validate Groq:ApiKey on startup — throw if empty so misconfiguration is caught early
 
