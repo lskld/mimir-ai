@@ -4,70 +4,115 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Mimir-ai** is a compliance training platform built as a .NET 10 Minimal API. It ingests regulatory documents (PDF/DOCX), analyzes them using Groq LLM to extract requirements, generates structured training outlines with citations, and enables role-based document assignment through a hierarchical organization model.
+**Mimir-ai** is a compliance training platform built as a .NET 10 Minimal API. It ingests regulatory documents (PDF/DOCX), analyzes them using Gemini LLM to extract AMLR requirements, generates structured training outlines, and produces role-customized training curricula through a hierarchical organization model.
 
 ## Build & Run
 
-**Prerequisites**: .NET 10 SDK, Groq API key
+**Prerequisites**: .NET 10 SDK, Gemini API key
 
 ```bash
 dotnet build
 dotnet run --project Mimir.API   # listens on http://localhost:5003
 ```
 
-**Set Groq API key** (leave `appsettings.json` value empty in repo):
+**Set Gemini API key** (leave `appsettings.json` value empty in repo):
 ```bash
-dotnet user-secrets set "Groq:ApiKey" "<your-key>" --project Mimir.API
-# or set environment variable: Groq__ApiKey=<your-key>
+dotnet user-secrets set "Gemini:ApiKey" "<your-key>" --project Mimir.API
+# or set environment variable: Gemini__ApiKey=<your-key>
 ```
 
-**Database**: SQLite, auto-created at runtime (`mimir.db`). No migrations command needed on first run — EF Core creates the schema.
+**Database**: SQLite, auto-created at `Mimir.API/mimir.db` on first run via `EnsureCreatedAsync()`. No migration command needed. To reset, delete `mimir.db` and restart.
 
-No test project exists yet.
+**Seed data**: On every startup, `SeedData.InitializeAsync()` runs. It is idempotent — skips if `Roles` table is non-empty. Seeds: 1 org level, 2 departments, 4 roles with risk profiles, and the AMLR document if a seed file exists at `Uploads/seed-documents/AMLR_1624.pdf` (resolved against `AppContext.BaseDirectory`). The AMLR document uses fixed `Id = 11111111-1111-1111-1111-111111111111`.
+
+No test project exists.
 
 ## Architecture
 
-### Core Domain
+### Core Domain — Three Entity Groups
 
-Three main entity groups:
+**1. Documents & Pipeline**
 
-1. **Documents & Pipeline** — `Document` → `DocumentChunk` (parsed text segments) → `TrainingOutline` (AI-generated curriculum). Status lifecycle: `Pending → Parsed → Analyzed` (or `Failed`).
+`Document` → `DocumentChunk` (parsed text segments) → `TrainingOutline` (generic AI-generated curriculum, stored as `RawJson`).
 
-2. **Organizational Hierarchy** (three levels) — `OrganizationLevel` → `Department` (linked via junction `DepartmentOrganizationLevel`) → `Role` (linked via junction `RoleDepartment`).
+Document status lifecycle: `Pending → Parsed → Analyzed` (or `Failed`).  
+`TrainingOutline` has a unique constraint on `DocumentId` — one generic outline per document.
 
-3. **Document Vault** — `DocumentAssignment` uses a polymorphic `TargetType`/`TargetId` pair (string + Guid) instead of typed FK because EF Core doesn't support multi-target FKs. Referential integrity enforced in `DocumentVaultService`.
+**2. Organizational Hierarchy**
 
-### Pipeline
+Three levels with many-to-many relationships via junction tables:
+```
+OrganizationLevel ↔ Department (via DepartmentOrganizationLevel)
+Department ↔ Role (via RoleDepartment)
+```
+`Role` carries a 5-dimension risk profile: `AmlRisk`, `SanctionsRisk`, `FraudRisk`, `DocumentationRisk`, `OperationalRisk` — all strings defaulting to `"Medium"`. Role status: `Draft → Published`.
 
-`DocumentPipeline` orchestrates three phases:
-1. **Parse** — `ParsingService` extracts `DocumentChunk`s from PDF (PdfPig) or DOCX (DocumentFormat.OpenXml)
-2. **Analyze** — `AnalysisService` calls Groq with `ExtractRequirements.txt` prompt to pull regulatory requirements from chunks
-3. **Outline** — `AnalysisService` calls Groq with `GenerateOutline.txt` prompt to produce a structured `TrainingOutline`
+**3. Document Vault**
 
-The pipeline uses a thread-safe `_runningDocuments HashSet` to prevent duplicate concurrent runs. The `POST /api/analysis` endpoint returns `202 Accepted` immediately and fires the pipeline in a background task; callers poll `GET /api/analysis/{docId}/outline` for completion.
+`DocumentAssignment` uses a polymorphic `TargetType` (string: `"OrganizationLevel"`, `"Department"`, or `"Role"`) + `TargetId` (Guid) pattern instead of typed FKs — EF Core doesn't support multi-target FKs. **Referential integrity is enforced in `DocumentVaultService`, not the database.**
 
-### LLM Integration
+### Training Generation — Two-Step Pipeline
 
-Groq is called via the OpenAI SDK (OpenAI-compatible API). `AnalysisService` constructs the client per-request, overriding the base URL and API key from config:
+The most complex flow in the system. Understanding this requires reading across multiple files:
+
+**Step 1 — Generic document analysis (runs once per document):**
+`DocumentPipeline.RunAsync` → `ParsingService.ParseDocumentAsync` (PDF via PdfPig, DOCX via DocumentFormat.OpenXml) → `AnalysisService.AnalyzeDocumentAsync` → persists a `TrainingOutline` with `RawJson`.
+
+The pipeline uses a static `Lock + HashSet<Guid>` to prevent duplicate concurrent runs. Called from `POST /api/analysis` (background task with `IServiceScopeFactory` scope).
+
+**Step 2 — Role customization (runs per role, not persisted to `Outlines`):**
+`RoleTrainingService.GenerateTrainingForRoleAsync` orchestrates:
+1. Load role + build `roleRiskProfile` dictionary
+2. Resolve inherited documents via `DocumentVaultService.GetResolvedDocumentSetAsync` (role > department > org level precedence)
+3. For each document: ensure a generic `TrainingOutline` exists (run pipeline if missing), then call `AnalysisService.CustomizeOutlineForRoleAsync` with the stored `RawJson` + role context — one more Gemini call per document
+4. Merge all customized outlines via `MergeOutlines` (deduplicates by section title, sorts by AMLR article number)
+5. Persist result as `RoleTrainingOutline` (separate table from `TrainingOutline`)
+
+Called from `POST /api/training/roles/{roleId}/generate` via `Task.Run` + new `IServiceScopeFactory` scope (same pattern as analysis endpoint — the request scope is disposed before background work starts).
+
+### LLM Integration (Gemini)
+
+`AnalysisService` calls Gemini via the `GenerativeAI` SDK:
 
 ```json
-"Groq": {
+"Gemini": {
   "ApiKey": "",
-  "BaseUrl": "https://api.groq.com/openai/v1",
-  "Model": "openai/gpt-oss-20b"
+  "Model": "gemini-2.5-flash-lite"
 }
 ```
 
-Prompt templates in `Prompts/` use `{{CHUNKS}}` and `{{REQUIREMENTS}}` as injection markers.
+Two prompts in `Prompts/`:
+- `ExtractRequirements.txt` — extracts requirements as a JSON array from document chunks
+- `GenerateOutline.txt` — produces a generic `TrainingOutlineResponse` JSON from requirements
 
-### Inheritance Resolution
+Role customization uses `BuildCustomizationPrompt()` in `AnalysisService` — the prompt is built inline (not a file). It uses `$$"""..."""` raw string syntax (double `$`) so JSON braces `{`/`}` are literal and `{{expr}}` is interpolation.
 
-`DocumentVaultService.GetResolvedDocumentSetAsync` implements the core business logic:
-- Load the role → its departments → their org levels
-- Collect `DocumentAssignment`s from all three levels
-- Deduplicate by `DocumentId`, keeping the most specific level: **role > department > org level**
+`AmlrArticle` in the outline response uses a custom `AmlrArticleConverter` that tolerates three shapes Gemini returns: integer (`6`), string (`"Preamble"`), or array (`[6, 25]`) — all normalized to a string.
+
+### Vault Inheritance Resolution
+
+`DocumentVaultService.GetResolvedDocumentSetAsync`:
+1. Load role → its departments → their org levels
+2. Collect `DocumentAssignment`s from all three levels
+3. Deduplicate by `DocumentId`, keeping the most specific assignment: **role > department > org level**
+
+### Background Task Pattern
+
+Both `POST /api/analysis` and `POST /api/training/roles/{id}/generate` use the same pattern:
+```csharp
+_ = Task.Run(async () =>
+{
+    await using var scope = scopeFactory.CreateAsyncScope();
+    var svc = scope.ServiceProvider.GetRequiredService<ITheService>();
+    await svc.DoWorkAsync(...);
+});
+return Results.Accepted(...);
+```
+The `IServiceScopeFactory` scope is required because the request's DI scope (and its `DbContext`) is disposed before `Task.Run` executes.
 
 ### Error Handling Convention
+
+Exceptions map to HTTP status codes via global middleware:
 
 | Exception | HTTP status |
 |-----------|-------------|
@@ -75,15 +120,11 @@ Prompt templates in `Prompts/` use `{{CHUNKS}}` and `{{REQUIREMENTS}}` as inject
 | `ArgumentException` | 400 |
 | `InvalidOperationException` | 409 |
 
-## Implementation Status
+### RoleTrainingOutline Status State Machine
 
-The codebase is approximately **40% implemented** — services and repositories are scaffolded with `TODO` comments. Key stubs:
+`Generating → Draft → Approved` (or `Failed`)
 
-- `DocumentService` — file upload validation & persistence
-- `ParsingService` — PDF/DOCX parsing into chunks
-- `AnalysisService` — Groq LLM calls and JSON parsing
-- `CitationService` — keyword-overlap chunk matching (planned: vector search)
-- `HierarchyService` / `DocumentVaultService` — all CRUD and inheritance resolution
-- All repositories — EF Core queries
-
-When implementing stubs, follow the existing pattern: constructor injection, `async Task` returns, map exceptions to the error handling convention above.
+- Created with `"Generating"` at the start of background work
+- Updated to `"Draft"` with `RawJson` on success
+- Updated to `"Failed"` with `ErrorMessage` on exception
+- Status endpoint maps `Draft`/`Approved` → `"Ready"` for the API consumer
