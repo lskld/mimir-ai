@@ -27,9 +27,7 @@ public class AnalysisService(
 
     public async Task<TrainingOutlineResponse> AnalyzeDocumentAsync(
         Guid documentId,
-        string regulationType,
-        string? roleName = null,
-        Dictionary<string, string>? riskProfile = null)
+        string regulationType)
     {
         var chunks = await documentRepository.GetChunksAsync(documentId);
         if (chunks.Count == 0)
@@ -41,28 +39,10 @@ public class AnalysisService(
         var promptPath = Path.Combine(AppContext.BaseDirectory, "Prompts", "ExtractRequirements.txt");
         var systemPrompt = await File.ReadAllTextAsync(promptPath);
 
-        var roleContext = string.Empty;
-        if (!string.IsNullOrWhiteSpace(roleName))
-        {
-            roleContext = $"""
-
-                TARGET ROLE FOR TRAINING: {roleName}
-                Role Risk Profile:
-                - AML Risk: {riskProfile?.GetValueOrDefault("AmlRisk", "Medium")}
-                - Sanctions Risk: {riskProfile?.GetValueOrDefault("SanctionsRisk", "Medium")}
-                - Fraud Risk: {riskProfile?.GetValueOrDefault("FraudRisk", "Medium")}
-                - Documentation Risk: {riskProfile?.GetValueOrDefault("DocumentationRisk", "Medium")}
-                - Operational Risk: {riskProfile?.GetValueOrDefault("OperationalRisk", "Medium")}
-
-                Calibrate requirement priority based on this role's risk exposure.
-                """;
-        }
-
         var userPrompt = $"""
             Regulation type: {regulationType}
 
             Document: {document?.OriginalFileName ?? documentId.ToString()}
-            {roleContext}
 
             Document content:
             {BuildChunkContext(chunks)}
@@ -104,7 +84,7 @@ public class AnalysisService(
             .Select((r, i) => $"{i + 1}. {r.Requirement} [Context: {r.Context}] [Priority: {r.Priority}]")
             .ToList();
 
-        var outline = await GenerateOutlineAsync(requirementStrings, documentId, regulationType, roleName, riskProfile);
+        var outline = await GenerateOutlineAsync(requirementStrings, documentId, regulationType);
 
         var rawOutlineJson = JsonSerializer.Serialize(outline);
         var entity = new TrainingOutline
@@ -129,35 +109,10 @@ public class AnalysisService(
     public async Task<TrainingOutlineResponse> GenerateOutlineAsync(
         List<string> requirements,
         Guid documentId,
-        string regulationType,
-        string? roleName = null,
-        Dictionary<string, string>? riskProfile = null)
+        string regulationType)
     {
         var promptPath = Path.Combine(AppContext.BaseDirectory, "Prompts", "GenerateOutline.txt");
         var systemPrompt = await File.ReadAllTextAsync(promptPath);
-
-        // Inject role context into the system prompt template
-        if (!string.IsNullOrWhiteSpace(roleName) && riskProfile != null)
-        {
-            systemPrompt = systemPrompt
-                .Replace("{{ROLE_NAME}}", roleName)
-                .Replace("{{AML_RISK_LEVEL}}", riskProfile.GetValueOrDefault("AmlRisk", "Medium"))
-                .Replace("{{SANCTIONS_RISK_LEVEL}}", riskProfile.GetValueOrDefault("SanctionsRisk", "Medium"))
-                .Replace("{{FRAUD_RISK_LEVEL}}", riskProfile.GetValueOrDefault("FraudRisk", "Medium"))
-                .Replace("{{DOCUMENTATION_RISK_LEVEL}}", riskProfile.GetValueOrDefault("DocumentationRisk", "Medium"))
-                .Replace("{{OPERATIONAL_RISK_LEVEL}}", riskProfile.GetValueOrDefault("OperationalRisk", "Medium"));
-        }
-        else
-        {
-            // Generic role for document-level analysis without specific role context
-            systemPrompt = systemPrompt
-                .Replace("{{ROLE_NAME}}", "General Compliance Role")
-                .Replace("{{AML_RISK_LEVEL}}", "Medium")
-                .Replace("{{SANCTIONS_RISK_LEVEL}}", "Medium")
-                .Replace("{{FRAUD_RISK_LEVEL}}", "Medium")
-                .Replace("{{DOCUMENTATION_RISK_LEVEL}}", "Medium")
-                .Replace("{{OPERATIONAL_RISK_LEVEL}}", "Medium");
-        }
 
         var requirementsList = string.Join("\n", requirements);
         var userPrompt = $"""
@@ -169,8 +124,134 @@ public class AnalysisService(
             """;
 
         var rawJson = await CallGeminiAsync(systemPrompt, userPrompt);
+        var outline = ParseOutlineJson(rawJson, documentId);
 
-        // Strip accidental markdown fences that some models include despite being asked not to
+        // Citation mapping — replace LLM-generated citation stubs with matched real chunks.
+        // Chunks are loaded here so GenerateOutlineAsync is self-contained when called externally.
+        var chunks = await documentRepository.GetChunksAsync(documentId);
+        if (chunks.Count > 0)
+        {
+            foreach (var section in outline.Sections)
+            {
+                section.Citations = section.Citations
+                    .Where(c => !string.IsNullOrWhiteSpace(c.Text))
+                    .Select(c =>
+                    {
+                        var chunk = citationService.MatchClaimToChunk(c.Text, chunks);
+                        return citationService.BuildCitation(chunk, c.Text);
+                    })
+                    .ToList();
+            }
+        }
+
+        return outline;
+    }
+
+    public async Task<TrainingOutlineResponse> CustomizeOutlineForRoleAsync(
+        string genericOutlineJson,
+        string roleName,
+        Dictionary<string, string> riskProfile)
+    {
+        logger.LogInformation(
+            "Customizing outline for role {RoleName} with risk profile AML={AmlRisk}",
+            roleName, riskProfile.GetValueOrDefault("AmlRisk", "Medium"));
+
+        var rawJson = await CallGeminiAsync(BuildCustomizationPrompt(genericOutlineJson, roleName, riskProfile), "");
+
+        var customized = ParseOutlineJson(rawJson, Guid.Empty);
+        customized.RoleName = roleName;
+        customized.RiskProfile = riskProfile;
+        return customized;
+    }
+
+    private string BuildCustomizationPrompt(
+        string genericOutlineJson,
+        string roleName,
+        Dictionary<string, string> riskProfile)
+    {
+        var riskSummary = string.Join(", ", riskProfile.Select(kv => $"{kv.Key}={kv.Value}"));
+        var highRiskAreas = riskProfile
+            .Where(kv => kv.Value == "High")
+            .Select(kv => kv.Key)
+            .ToList();
+        var moduleCount = highRiskAreas.Count >= 3 ? "7-8" :
+                          highRiskAreas.Count >= 1 ? "5-6" : "3-4";
+        var highRiskAreasText = highRiskAreas.Count > 0 ? string.Join(", ", highRiskAreas) : "None";
+        var amlRisk = riskProfile.GetValueOrDefault("AmlRisk", "Medium");
+        var sanctionsRisk = riskProfile.GetValueOrDefault("SanctionsRisk", "Medium");
+        var fraudRisk = riskProfile.GetValueOrDefault("FraudRisk", "Medium");
+        var documentationRisk = riskProfile.GetValueOrDefault("DocumentationRisk", "Medium");
+        var operationalRisk = riskProfile.GetValueOrDefault("OperationalRisk", "Medium");
+        var generatedAt = DateTime.UtcNow.ToString("O");
+
+        // $$""" raw string: { and } are literal; {{expr}} is interpolation
+        return $$"""
+            You are an expert compliance training designer specializing in AMLR 2024/1624.
+
+            You have been given a generic AMLR training outline. Your task is to customize
+            it specifically for the {{roleName}} role.
+
+            ROLE CONTEXT:
+            - Role: {{roleName}}
+            - Risk Profile: {{riskSummary}}
+            - High Risk Areas: {{highRiskAreasText}}
+
+            CUSTOMIZATION INSTRUCTIONS:
+            - Target module count: {{moduleCount}} modules
+            - For HIGH risk areas: expand content, add more learning objectives (5-6 per module),
+              add role-specific scenarios and examples
+            - For MEDIUM risk areas: keep standard depth (3-4 learning objectives per module)
+            - For LOW risk areas: reduce to awareness-level only (2-3 learning objectives)
+            - Rename module titles to reflect the {{roleName}} role specifically
+              (e.g. "EDD Case Handling for KYC Analysts" not generic "Customer Due Diligence")
+            - Update descriptions to reference the role's actual day-to-day responsibilities
+            - Keep all AMLR article citations and regulatory basis intact
+            - Do NOT invent new regulatory requirements — only customize depth and framing
+
+            GENERIC OUTLINE TO CUSTOMIZE:
+            {{genericOutlineJson}}
+
+            Return ONLY valid JSON matching exactly this structure:
+            {
+              "documentId": "00000000-0000-0000-0000-000000000000",
+              "regulationType": "AMLR 2024/1624",
+              "roleName": "{{roleName}}",
+              "riskProfile": {
+                "amlRisk": "{{amlRisk}}",
+                "sanctionsRisk": "{{sanctionsRisk}}",
+                "fraudRisk": "{{fraudRisk}}",
+                "documentationRisk": "{{documentationRisk}}",
+                "operationalRisk": "{{operationalRisk}}"
+              },
+              "generatedAt": "{{generatedAt}}",
+              "sections": [
+                {
+                  "title": "string",
+                  "description": "string",
+                  "learningObjectives": ["string"],
+                  "regulatoryBasis": {
+                    "amlrArticle": "string",
+                    "articleTitle": "string"
+                  },
+                  "citations": [
+                    {
+                      "text": "string",
+                      "sourceDocument": "string",
+                      "pageNumber": 0,
+                      "section": "string",
+                      "chunkId": "string"
+                    }
+                  ]
+                }
+              ]
+            }
+
+            Return ONLY the JSON. No markdown fences. No explanation.
+            """;
+    }
+
+    private TrainingOutlineResponse ParseOutlineJson(string rawJson, Guid documentId)
+    {
         var cleanJson = rawJson.Trim();
         if (cleanJson.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
             cleanJson = cleanJson["```json".Length..].TrimStart();
@@ -196,24 +277,6 @@ public class AnalysisService(
             logger.LogDebug("Raw outline output: {RawJson}", rawJson);
             throw new InvalidOperationException(
                 $"Failed to parse outline JSON for document {documentId}. Raw output logged at Debug level.");
-        }
-
-        // Citation mapping — replace LLM-generated citation stubs with matched real chunks.
-        // Chunks are loaded here so GenerateOutlineAsync is self-contained when called externally.
-        var chunks = await documentRepository.GetChunksAsync(documentId);
-        if (chunks.Count > 0)
-        {
-            foreach (var section in outline.Sections)
-            {
-                section.Citations = section.Citations
-                    .Where(c => !string.IsNullOrWhiteSpace(c.Text))
-                    .Select(c =>
-                    {
-                        var chunk = citationService.MatchClaimToChunk(c.Text, chunks);
-                        return citationService.BuildCitation(chunk, c.Text);
-                    })
-                    .ToList();
-            }
         }
 
         return outline;

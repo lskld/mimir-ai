@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Mimir.API.Data.Repositories;
 using Mimir.API.Models.Domain;
 using Mimir.API.Models.Domain.Hierarchy;
@@ -187,38 +188,6 @@ public static class SeedData
             await hierarchyRepository.UpdateRoleStatusAsync(complianceOfficer.Id, "Published");
             await hierarchyRepository.UpdateRoleStatusAsync(customerAdvisor.Id, "Published");
             logger.LogInformation("Published all roles");
-
-            // Step 5: Create placeholder documents (note: actual AMLR_1624.pdf would need to be uploaded separately)
-            // For now, we create document records without actual files; in a real scenario these would be uploaded via the API
-            var amlrDoc = new Document
-            {
-                Id = Guid.NewGuid(),
-                FileName = "AMLR_1624.pdf",
-                OriginalFileName = "AMLR 2024/1624 - Anti-Money Laundering Regulation",
-                FilePath = "/uploads/AMLR_1624.pdf",
-                MimeType = "application/pdf",
-                FileSizeBytes = 0, // Would be set when actually uploaded
-                RegulationType = "AMLR 2024/1624",
-                Status = "Pending", // Will be updated to Parsed/Analyzed when processed
-                UploadedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-            await documentRepository.CreateDocumentAsync(amlrDoc);
-            logger.LogInformation("Created document: {FileName}", amlrDoc.OriginalFileName);
-
-            // Step 6: Assign AMLR document to organization level (all roles inherit via vault)
-            var amlrAssignment = new DocumentAssignment
-            {
-                Id = Guid.NewGuid(),
-                DocumentId = amlrDoc.Id,
-                TargetType = "OrganizationLevel",
-                TargetId = globalCompliance.Id,
-                AssignedAt = DateTime.UtcNow
-            };
-            await documentVaultRepository.AssignDocumentAsync(amlrAssignment);
-            logger.LogInformation(
-                "Assigned document {DocName} to OrganizationLevel {OrgLevel} (all roles inherit)",
-                amlrDoc.OriginalFileName, globalCompliance.Name);
 
             logger.LogInformation("Seed data initialization complete");
         }

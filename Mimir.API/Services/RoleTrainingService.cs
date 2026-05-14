@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Mimir.API.Data.Repositories;
+using Mimir.API.Models.Domain;
 using Mimir.API.Models.Responses;
 using Mimir.API.Pipeline;
 
@@ -9,13 +10,11 @@ public class RoleTrainingService(
     IHierarchyRepository hierarchyRepository,
     IDocumentVaultService documentVaultService,
     IOutlineRepository outlineRepository,
+    ITrainingRepository trainingRepository,
     IDocumentPipeline documentPipeline,
+    IAnalysisService analysisService,
     ILogger<RoleTrainingService> logger) : IRoleTrainingService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
 
     public async Task<TrainingOutlineResponse> GenerateTrainingForRoleAsync(Guid roleId)
     {
@@ -37,103 +36,125 @@ public class RoleTrainingService(
             "Starting training generation for role {RoleName} ({RoleId}) with risk profile: AML={AmlRisk}",
             role.Name, roleId, role.AmlRisk);
 
-        // Step 2: Get the resolved document set for this role
-        var resolvedDocuments = await documentVaultService.GetResolvedDocumentSetAsync(roleId);
-        if (resolvedDocuments.Documents.Count == 0)
+        // Create or overwrite the persisted outline record so the status endpoint
+        // can return "Generating" while the background task runs.
+        var existingRecord = await trainingRepository.GetTrainingOutlineAsync(roleId);
+        RoleTrainingOutline outlineRecord;
+        if (existingRecord is not null)
         {
-            logger.LogWarning("No documents found for role {RoleName} — vault is empty", role.Name);
-            return new TrainingOutlineResponse
+            outlineRecord = await trainingRepository.UpdateTrainingStatusAsync(
+                existingRecord.Id, "Generating");
+        }
+        else
+        {
+            outlineRecord = await trainingRepository.SaveTrainingOutlineAsync(new RoleTrainingOutline
             {
-                DocumentId = Guid.Empty,
+                RoleId = roleId,
                 RegulationType = "AMLR 2024/1624",
-                RoleName = role.Name,
-                RiskProfile = roleRiskProfile,
-                Sections = [],
-                GeneratedAt = DateTime.UtcNow
-            };
+                Status = "Generating"
+            });
         }
 
-        logger.LogInformation(
-            "Resolved {DocumentCount} documents for role {RoleName}",
-            resolvedDocuments.Documents.Count, role.Name);
-
-        // Step 3: Ensure all documents have been analyzed (run pipeline if needed)
-        var allOutlines = new List<TrainingOutlineResponse>();
-        foreach (var resolvedDoc in resolvedDocuments.Documents)
+        try
         {
-            var outline = await outlineRepository.GetOutlineAsync(resolvedDoc.DocumentId);
-            if (outline is null)
-            {
-                logger.LogInformation(
-                    "Document {DocumentId} ({FileName}) not yet analyzed — running pipeline",
-                    resolvedDoc.DocumentId, resolvedDoc.FileName);
+            // Step 2: Get the resolved document set for this role
+            var resolvedDocuments = await documentVaultService.GetResolvedDocumentSetAsync(roleId);
 
-                try
+            TrainingOutlineResponse mergedOutline;
+            if (resolvedDocuments.Documents.Count == 0)
+            {
+                logger.LogWarning("No documents found for role {RoleName} — vault is empty", role.Name);
+                mergedOutline = new TrainingOutlineResponse
                 {
-                    var parsedOutline = await documentPipeline.RunAsync(resolvedDoc.DocumentId, "AMLR 2024/1624");
-                    allOutlines.Add(parsedOutline);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex,
-                        "Pipeline failed for document {DocumentId} ({FileName})",
-                        resolvedDoc.DocumentId, resolvedDoc.FileName);
-                    // Continue with other documents; don't fail the entire role training
-                }
+                    DocumentId = Guid.Empty,
+                    RegulationType = "AMLR 2024/1624",
+                    RoleName = role.Name,
+                    RiskProfile = roleRiskProfile,
+                    Sections = [],
+                    GeneratedAt = DateTime.UtcNow
+                };
             }
             else
             {
-                logger.LogDebug(
-                    "Document {DocumentId} ({FileName}) already analyzed — reusing outline",
-                    resolvedDoc.DocumentId, resolvedDoc.FileName);
+                logger.LogInformation(
+                    "Resolved {DocumentCount} documents for role {RoleName}",
+                    resolvedDocuments.Documents.Count, role.Name);
 
-                // Parse the outline from the stored JSON
-                try
+                // Step 3: For each document, ensure a generic outline exists, then customize for this role
+                var allOutlines = new List<TrainingOutlineResponse>();
+                foreach (var resolvedDoc in resolvedDocuments.Documents)
                 {
-                    if (!string.IsNullOrWhiteSpace(outline.RawJson))
+                    try
                     {
-                        var parsedOutline = JsonSerializer.Deserialize<TrainingOutlineResponse>(
-                            outline.RawJson, JsonOptions);
-                        if (parsedOutline is not null)
-                            allOutlines.Add(parsedOutline);
+                        // Step A: Ensure the document has a generic outline (parse + analyze once)
+                        var docOutline = await outlineRepository.GetOutlineAsync(resolvedDoc.DocumentId);
+                        if (docOutline is null)
+                        {
+                            logger.LogInformation(
+                                "Document {DocumentId} not yet analyzed — running generic pipeline first",
+                                resolvedDoc.DocumentId);
+                            await documentPipeline.RunAsync(resolvedDoc.DocumentId, "AMLR 2024/1624");
+                            docOutline = await outlineRepository.GetOutlineAsync(resolvedDoc.DocumentId);
+                        }
+
+                        if (docOutline is null || string.IsNullOrWhiteSpace(docOutline.RawJson))
+                        {
+                            logger.LogWarning(
+                                "No outline available for document {DocumentId} after pipeline run — skipping",
+                                resolvedDoc.DocumentId);
+                            continue;
+                        }
+
+                        // Step B: Customize the generic outline for this role
+                        logger.LogInformation(
+                            "Customizing outline for role {RoleName} from document {DocumentId}",
+                            role.Name, resolvedDoc.DocumentId);
+
+                        var customized = await analysisService.CustomizeOutlineForRoleAsync(
+                            docOutline.RawJson,
+                            role.Name,
+                            roleRiskProfile);
+
+                        allOutlines.Add(customized);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex,
+                            "Failed to process document {DocumentId} for role {RoleName}",
+                            resolvedDoc.DocumentId, role.Name);
                     }
                 }
-                catch (JsonException ex)
-                {
-                    logger.LogWarning(ex,
-                        "Failed to parse stored outline for document {DocumentId}",
-                        resolvedDoc.DocumentId);
-                }
+
+                if (allOutlines.Count == 0)
+                    logger.LogWarning(
+                        "No valid outlines available for role {RoleName} — all analyses failed", role.Name);
+
+                logger.LogInformation(
+                    "Collected {OutlineCount} outlines for role {RoleName} — merging into combined training",
+                    allOutlines.Count, role.Name);
+
+                // Step 4: Merge all outlines into one combined outline
+                mergedOutline = MergeOutlines(allOutlines, roleId, role.Name, roleRiskProfile);
             }
-        }
 
-        if (allOutlines.Count == 0)
+            // Persist the completed outline
+            var rawJson = JsonSerializer.Serialize(mergedOutline);
+            await trainingRepository.UpdateTrainingStatusAsync(outlineRecord.Id, "Draft", rawJson: rawJson);
+
+            logger.LogInformation(
+                "Successfully generated training for role {RoleName}: {SectionCount} sections, {ObjectiveCount} learning objectives",
+                role.Name, mergedOutline.Sections.Count,
+                mergedOutline.Sections.Sum(s => s.LearningObjectives.Count));
+
+            return mergedOutline;
+        }
+        catch (Exception ex)
         {
-            logger.LogWarning("No valid outlines available for role {RoleName} — all analyses failed", role.Name);
-            return new TrainingOutlineResponse
-            {
-                DocumentId = Guid.Empty,
-                RegulationType = "AMLR 2024/1624",
-                RoleName = role.Name,
-                RiskProfile = roleRiskProfile,
-                Sections = [],
-                GeneratedAt = DateTime.UtcNow
-            };
+            logger.LogError(ex, "Training generation failed for role {RoleId}", roleId);
+            await trainingRepository.UpdateTrainingStatusAsync(
+                outlineRecord.Id, "Failed", errorMessage: ex.Message);
+            throw;
         }
-
-        logger.LogInformation(
-            "Collected {OutlineCount} outlines for role {RoleName} — merging into combined training",
-            allOutlines.Count, role.Name);
-
-        // Step 4: Merge all outlines into one combined outline
-        var mergedOutline = MergeOutlines(allOutlines, roleId, role.Name, roleRiskProfile);
-
-        logger.LogInformation(
-            "Successfully generated training for role {RoleName}: {SectionCount} sections, {ObjectiveCount} learning objectives",
-            role.Name, mergedOutline.Sections.Count,
-            mergedOutline.Sections.Sum(s => s.LearningObjectives.Count));
-
-        return mergedOutline;
     }
 
     public async Task<string> GetTrainingStatusAsync(Guid roleId)
@@ -186,7 +207,7 @@ public class RoleTrainingService(
 
         // Sort sections by regulatory basis article (if available), then by title
         mergedSections = mergedSections
-            .OrderBy(s => s.RegulatoryBasis?.AmlrArticle ?? 99)
+            .OrderBy(s => int.TryParse(s.RegulatoryBasis?.AmlrArticle?.Split(',')[0].Trim(), out var n) ? n : int.MaxValue)
             .ThenBy(s => s.Title)
             .ToList();
 

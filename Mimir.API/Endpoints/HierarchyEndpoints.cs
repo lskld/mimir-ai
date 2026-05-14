@@ -1,4 +1,6 @@
+using Mimir.API.Data.Repositories;
 using Mimir.API.Models.Requests.Hierarchy;
+using Mimir.API.Models.Responses.Hierarchy;
 using Mimir.API.Services;
 
 namespace Mimir.API.Endpoints;
@@ -46,6 +48,27 @@ public static class HierarchyEndpoints
             // TODO: catch InvalidOperationException (no departments) and return 409
             // TODO: catch KeyNotFoundException (role not found) and return 404
             var response = await hierarchyService.PublishRoleAsync(roleId);
+            return Results.Ok(response);
+        });
+
+        app.MapGet("/api/hierarchy/roles/{roleId:guid}/risk-profile", async (
+            Guid roleId,
+            IHierarchyRepository hierarchyRepository) =>
+        {
+            var role = await hierarchyRepository.GetRoleAsync(roleId);
+            if (role is null)
+                throw new KeyNotFoundException($"Role {roleId} not found");
+
+            var response = new RiskProfileResponse(
+                RoleId: role.Id,
+                RoleName: role.Name,
+                AmlRisk: role.AmlRisk,
+                SanctionsRisk: role.SanctionsRisk,
+                FraudRisk: role.FraudRisk,
+                DocumentationRisk: role.DocumentationRisk,
+                OperationalRisk: role.OperationalRisk
+            );
+
             return Results.Ok(response);
         });
     }

@@ -16,6 +16,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<DepartmentOrganizationLevel> DepartmentOrganizationLevels => Set<DepartmentOrganizationLevel>();
     public DbSet<RoleDepartment> RoleDepartments => Set<RoleDepartment>();
     public DbSet<DocumentAssignment> DocumentAssignments => Set<DocumentAssignment>();
+    public DbSet<RoleTrainingOutline> RoleTrainingOutlines => Set<RoleTrainingOutline>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -92,5 +93,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<OrganizationLevel>().Ignore(o => o.DocumentAssignments);
         modelBuilder.Entity<Department>().Ignore(d => d.DocumentAssignments);
         modelBuilder.Entity<Role>().Ignore(r => r.DocumentAssignments);
+
+        // RoleTrainingOutline — one active outline per role; index RoleId for fast lookup.
+        // No FK to Role: same pattern as DocumentAssignment.TargetId, integrity enforced in service.
+        modelBuilder.Entity<RoleTrainingOutline>()
+            .HasIndex(o => o.RoleId);
     }
 }
