@@ -29,6 +29,7 @@ packages/
 # Uploaded files — keep the directory via .gitkeep, ignore content
 Mimir.API/Uploads/*
 !Mimir.API/Uploads/.gitkeep
+!Mimir.API/Uploads/seed-documents
 
 # User secrets (stored in %APPDATA%\Microsoft\UserSecrets — never in the repo)
 **/secrets.json
