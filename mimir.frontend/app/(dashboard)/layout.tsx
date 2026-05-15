@@ -35,12 +35,12 @@ export default function DashboardLayout({
     { label: "Hierarchy", href: "/hierarchy", icon: ShieldCheck },
     {
       label: "Studio",
-      href: "/studio/dummy-training-id",
+      href: "/studio",
       icon: GraduationCap,
     },
     {
       label: "Employees",
-      href: "/preview/dummy-preview-id",
+      href: "/preview",
       icon: Eye,
     },
   ]
