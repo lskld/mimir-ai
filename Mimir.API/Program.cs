@@ -29,6 +29,7 @@ builder.Services.AddScoped<IRoleTrainingService, RoleTrainingService>();
 builder.Services.AddScoped<IDocumentPipeline, DocumentPipeline>();
 builder.Services.AddScoped<IFullTrainingProgramRepository, FullTrainingProgramRepository>();
 builder.Services.AddScoped<IFullTrainingProgramService, FullTrainingProgramService>();
+builder.Services.AddScoped<IScormPackageService, ScormPackageService>();
 
 // 3. OpenAPI
 builder.Services.AddEndpointsApiExplorer();
