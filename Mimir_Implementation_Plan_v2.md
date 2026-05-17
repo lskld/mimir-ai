@@ -250,7 +250,7 @@ GET  /api/training/roles/{roleId}/export/scorm
 
 ## Phase 5 — Integration, Hardening & Demo Prep
 
-### 24. End-to-end test ← was step 19
+### 24. End-to-end test ← was step 19 
 
 Full pipeline test:
 - Upload AMLR_1624.pdf via Swagger
@@ -260,7 +260,6 @@ Full pipeline test:
 - Poll status until Ready
 - GET /api/training/roles/{kycAnalystId}/outline
 - Verify: sections present, AMLR article citations visible, risk calibration visible
-- Approve and export SCORM
 
 ### 25. Error handling pass ← was step 20
 

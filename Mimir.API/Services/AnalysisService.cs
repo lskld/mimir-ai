@@ -290,7 +290,7 @@ public class AnalysisService(
             var modelName = configuration["Gemini:Model"];
 
             logger.LogDebug("Gemini config - Model: {model}", modelName ?? "[NULL]");
-            logger.LogDebug("Gemini config - APIKey: {apiKey}", apiKey ?? "[NULL]");
+            logger.LogDebug("Gemini config - APIKey configured: {configured}", !string.IsNullOrWhiteSpace(apiKey));
 
             var client = new GenerativeModel(apiKey!, modelName!);
             var response = await client.GenerateContentAsync(systemPrompt + "\n\n" + userPrompt);
