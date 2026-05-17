@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using GenerativeAI;
 using Mimir.API.Data.Repositories;
 using Mimir.API.Models.Domain;
 using Mimir.API.Models.Responses;
@@ -11,7 +10,7 @@ public class AnalysisService(
     IDocumentRepository documentRepository,
     IOutlineRepository outlineRepository,
     ICitationService citationService,
-    IConfiguration configuration,
+    ILlmService llmService,
     ILogger<AnalysisService> logger) : IAnalysisService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -48,20 +47,12 @@ public class AnalysisService(
             {BuildChunkContext(chunks)}
             """;
 
-        var rawJson = await CallGeminiAsync(systemPrompt, userPrompt);
-
-        var cleanRequirementsJson = rawJson.Trim();
-        if (cleanRequirementsJson.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
-            cleanRequirementsJson = cleanRequirementsJson["```json".Length..].TrimStart();
-        else if (cleanRequirementsJson.StartsWith("```"))
-            cleanRequirementsJson = cleanRequirementsJson["```".Length..].TrimStart();
-        if (cleanRequirementsJson.EndsWith("```"))
-            cleanRequirementsJson = cleanRequirementsJson[..^3].TrimEnd();
+        var rawJson = await llmService.CallLlmAsync(systemPrompt + "\n\n" + userPrompt);
 
         List<RequirementItem>? requirements;
         try
         {
-            requirements = JsonSerializer.Deserialize<List<RequirementItem>>(cleanRequirementsJson, JsonOptions);
+            requirements = JsonSerializer.Deserialize<List<RequirementItem>>(rawJson, JsonOptions);
         }
         catch (JsonException)
         {
@@ -123,7 +114,7 @@ public class AnalysisService(
             {requirementsList}
             """;
 
-        var rawJson = await CallGeminiAsync(systemPrompt, userPrompt);
+        var rawJson = await llmService.CallLlmAsync(systemPrompt + "\n\n" + userPrompt);
         var outline = ParseOutlineJson(rawJson, documentId);
 
         // Citation mapping — replace LLM-generated citation stubs with matched real chunks.
@@ -156,7 +147,7 @@ public class AnalysisService(
             "Customizing outline for role {RoleName} with risk profile AML={AmlRisk}",
             roleName, riskProfile.GetValueOrDefault("AmlRisk", "Medium"));
 
-        var rawJson = await CallGeminiAsync(BuildCustomizationPrompt(genericOutlineJson, roleName, riskProfile), "");
+        var rawJson = await llmService.CallLlmAsync(BuildCustomizationPrompt(genericOutlineJson, roleName, riskProfile));
 
         var customized = ParseOutlineJson(rawJson, Guid.Empty);
         customized.RoleName = roleName;
@@ -252,18 +243,10 @@ public class AnalysisService(
 
     private TrainingOutlineResponse ParseOutlineJson(string rawJson, Guid documentId)
     {
-        var cleanJson = rawJson.Trim();
-        if (cleanJson.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
-            cleanJson = cleanJson["```json".Length..].TrimStart();
-        else if (cleanJson.StartsWith("```"))
-            cleanJson = cleanJson["```".Length..].TrimStart();
-        if (cleanJson.EndsWith("```"))
-            cleanJson = cleanJson[..^3].TrimEnd();
-
         TrainingOutlineResponse? outline;
         try
         {
-            outline = JsonSerializer.Deserialize<TrainingOutlineResponse>(cleanJson, JsonOptions);
+            outline = JsonSerializer.Deserialize<TrainingOutlineResponse>(rawJson, JsonOptions);
         }
         catch (JsonException)
         {
@@ -280,31 +263,6 @@ public class AnalysisService(
         }
 
         return outline;
-    }
-
-    private async Task<string> CallGeminiAsync(string systemPrompt, string userPrompt)
-    {
-        try
-        {
-            var apiKey = configuration["Gemini:ApiKey"];
-            var modelName = configuration["Gemini:Model"];
-
-            logger.LogDebug("Gemini config - Model: {model}", modelName ?? "[NULL]");
-            logger.LogDebug("Gemini config - APIKey configured: {configured}", !string.IsNullOrWhiteSpace(apiKey));
-
-            var client = new GenerativeModel(apiKey!, modelName!);
-            var response = await client.GenerateContentAsync(systemPrompt + "\n\n" + userPrompt);
-
-            var text = response.Text;
-
-            logger.LogDebug("Gemini raw response: {Response}", text);
-            return text;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Gemini API call failed: {Message}", ex.Message);
-            throw new InvalidOperationException($"Gemini API call failed: {ex.Message}", ex);
-        }
     }
 
     // This is where smarter retrieval (RAG) would go in a production version —
