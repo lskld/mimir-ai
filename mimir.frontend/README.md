@@ -1,5 +1,15 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Mimir API
+
+The UI calls the .NET Minimal API. By default it expects the backend at `http://localhost:5003`. Override with `.env.local`:
+
+```bash
+NEXT_PUBLIC_MIMIR_API_BASE_URL=http://localhost:5003
+```
+
+See `.env.example`. Run the API from the repo root: `dotnet run --project Mimir.API`.
+
 ## Getting Started
 
 First, run the development server:

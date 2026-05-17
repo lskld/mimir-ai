@@ -51,3 +51,4 @@ TestResults/
 *.trx
 *.coverage
 *.coveragexml
+mimir.frontend/.env.example
