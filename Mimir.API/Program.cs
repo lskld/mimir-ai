@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Mimir.API.Data;
 using Mimir.API.Data.Repositories;
 using Mimir.API.Endpoints;
+using Mimir.API.Middleware;
 using Mimir.API.Pipeline;
 using Mimir.API.Services;
 
@@ -59,6 +60,7 @@ if (app.Environment.IsDevelopment())
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "Uploads"));
 
 // 7. Middleware
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseCors();
 
 // 8. Seed demo data if database is empty
@@ -80,6 +82,10 @@ app.MapHierarchyEndpoints();
 app.MapVaultEndpoints();
 app.MapRoleTrainingEndpoints();
 
-// 10. TODO: validate Groq:ApiKey on startup — throw if empty so misconfiguration is caught early
+// 10. Validate Gemini API key on startup so misconfiguration is caught immediately.
+var geminiApiKey = app.Configuration["Gemini:ApiKey"];
+if (string.IsNullOrWhiteSpace(geminiApiKey))
+    throw new InvalidOperationException(
+        "Gemini:ApiKey is not configured. Set it via user-secrets or the Gemini__ApiKey environment variable.");
 
 app.Run();
