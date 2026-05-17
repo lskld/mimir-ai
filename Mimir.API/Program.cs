@@ -27,6 +27,8 @@ builder.Services.AddScoped<IHierarchyService, HierarchyService>();
 builder.Services.AddScoped<IDocumentVaultService, DocumentVaultService>();
 builder.Services.AddScoped<IRoleTrainingService, RoleTrainingService>();
 builder.Services.AddScoped<IDocumentPipeline, DocumentPipeline>();
+builder.Services.AddScoped<IFullTrainingProgramRepository, FullTrainingProgramRepository>();
+builder.Services.AddScoped<IFullTrainingProgramService, FullTrainingProgramService>();
 
 // 3. OpenAPI
 builder.Services.AddEndpointsApiExplorer();
