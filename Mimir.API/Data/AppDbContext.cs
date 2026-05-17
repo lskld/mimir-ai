@@ -17,6 +17,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<RoleDepartment> RoleDepartments => Set<RoleDepartment>();
     public DbSet<DocumentAssignment> DocumentAssignments => Set<DocumentAssignment>();
     public DbSet<RoleTrainingOutline> RoleTrainingOutlines => Set<RoleTrainingOutline>();
+    public DbSet<FullTrainingProgram> FullTrainingPrograms => Set<FullTrainingProgram>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -98,5 +99,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // No FK to Role: same pattern as DocumentAssignment.TargetId, integrity enforced in service.
         modelBuilder.Entity<RoleTrainingOutline>()
             .HasIndex(o => o.RoleId);
+
+        // FullTrainingProgram → Role (real FK, unlike the polymorphic DocumentAssignment pattern)
+        modelBuilder.Entity<FullTrainingProgram>()
+            .HasOne<Role>()
+            .WithMany()
+            .HasForeignKey(p => p.RoleId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<FullTrainingProgram>()
+            .HasIndex(p => p.RoleId);
+
+        modelBuilder.Entity<FullTrainingProgram>()
+            .HasIndex(p => p.Status);
     }
 }

@@ -27,6 +27,9 @@ builder.Services.AddScoped<IHierarchyService, HierarchyService>();
 builder.Services.AddScoped<IDocumentVaultService, DocumentVaultService>();
 builder.Services.AddScoped<IRoleTrainingService, RoleTrainingService>();
 builder.Services.AddScoped<IDocumentPipeline, DocumentPipeline>();
+builder.Services.AddScoped<IFullTrainingProgramRepository, FullTrainingProgramRepository>();
+builder.Services.AddScoped<IFullTrainingProgramService, FullTrainingProgramService>();
+builder.Services.AddScoped<IScormPackageService, ScormPackageService>();
 
 // 3. OpenAPI
 builder.Services.AddEndpointsApiExplorer();
@@ -81,6 +84,7 @@ app.MapAnalysisEndpoints();
 app.MapHierarchyEndpoints();
 app.MapVaultEndpoints();
 app.MapRoleTrainingEndpoints();
+app.MapFullTrainingProgramEndpoints();
 
 // 10. Validate Gemini API key on startup so misconfiguration is caught immediately.
 var geminiApiKey = app.Configuration["Gemini:ApiKey"];
