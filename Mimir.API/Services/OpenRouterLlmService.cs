@@ -34,7 +34,9 @@ public class OpenRouterLlmService(
         var requestBody = new ChatCompletionRequest(
             Model: model,
             Messages: [new ChatMessage("user", prompt)],
-            MaxTokens: 4000,
+            // AMLR requirement extraction can produce 50+ items at ~200 tokens each.
+            // Gemini 2.5 Flash supports up to ~65k output tokens; 16k is safe for our prompts.
+            MaxTokens: 16000,
             Temperature: 0.7);
 
         var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/chat/completions");
@@ -104,7 +106,8 @@ public class OpenRouterLlmService(
 
         sw.Stop();
 
-        var content = parsed?.Choices?.FirstOrDefault()?.Message?.Content;
+        var choice = parsed?.Choices?.FirstOrDefault();
+        var content = choice?.Message?.Content;
         if (string.IsNullOrEmpty(content))
         {
             logger.LogError("LLM returned empty content. Raw body: {Body}", Truncate(responseBody, 500));
@@ -114,9 +117,21 @@ public class OpenRouterLlmService(
         var prompt_tokens = parsed?.Usage?.PromptTokens ?? 0;
         var completion_tokens = parsed?.Usage?.CompletionTokens ?? 0;
 
+        // OpenAI/OpenRouter convention: "stop" = clean finish, "length" = hit max_tokens.
+        // Surface truncation loudly so it doesn't look like a parse bug to the caller.
+        if (string.Equals(choice?.FinishReason, "length", StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogError(
+                "LLM response was truncated (finish_reason=length). Tokens used: {CompletionTokens}. Increase max_tokens.",
+                completion_tokens);
+            throw new InvalidOperationException(
+                $"LLM response was truncated at {completion_tokens} tokens (finish_reason=length). " +
+                "Increase max_tokens or shorten the input.");
+        }
+
         logger.LogInformation(
-            "LLM call completed in {ElapsedMs}ms, tokens: {PromptTokens}/{CompletionTokens}, response length: {ResponseLength} chars",
-            sw.ElapsedMilliseconds, prompt_tokens, completion_tokens, content.Length);
+            "LLM call completed in {ElapsedMs}ms, tokens: {PromptTokens}/{CompletionTokens}, finish: {FinishReason}, response: {ResponseLength} chars",
+            sw.ElapsedMilliseconds, prompt_tokens, completion_tokens, choice?.FinishReason ?? "?", content.Length);
 
         return content;
     }
@@ -138,7 +153,7 @@ public class OpenRouterLlmService(
         IReadOnlyList<Choice>? Choices,
         UsageInfo? Usage);
 
-    private sealed record Choice(ChatMessage? Message);
+    private sealed record Choice(ChatMessage? Message, string? FinishReason);
 
     private sealed record UsageInfo(int PromptTokens, int CompletionTokens);
 }

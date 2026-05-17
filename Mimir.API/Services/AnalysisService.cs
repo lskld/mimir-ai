@@ -48,11 +48,12 @@ public class AnalysisService(
             """;
 
         var rawJson = await llmService.CallLlmAsync(systemPrompt + "\n\n" + userPrompt);
+        var cleanJson = StripMarkdownFences(rawJson);
 
         List<RequirementItem>? requirements;
         try
         {
-            requirements = JsonSerializer.Deserialize<List<RequirementItem>>(rawJson, JsonOptions);
+            requirements = JsonSerializer.Deserialize<List<RequirementItem>>(cleanJson, JsonOptions);
         }
         catch (JsonException)
         {
@@ -243,10 +244,12 @@ public class AnalysisService(
 
     private TrainingOutlineResponse ParseOutlineJson(string rawJson, Guid documentId)
     {
+        var cleanJson = StripMarkdownFences(rawJson);
+
         TrainingOutlineResponse? outline;
         try
         {
-            outline = JsonSerializer.Deserialize<TrainingOutlineResponse>(rawJson, JsonOptions);
+            outline = JsonSerializer.Deserialize<TrainingOutlineResponse>(cleanJson, JsonOptions);
         }
         catch (JsonException)
         {
@@ -263,6 +266,18 @@ public class AnalysisService(
         }
 
         return outline;
+    }
+
+    private static string StripMarkdownFences(string raw)
+    {
+        var clean = raw.Trim();
+        if (clean.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
+            clean = clean["```json".Length..].TrimStart();
+        else if (clean.StartsWith("```"))
+            clean = clean["```".Length..].TrimStart();
+        if (clean.EndsWith("```"))
+            clean = clean[..^3].TrimEnd();
+        return clean;
     }
 
     // This is where smarter retrieval (RAG) would go in a production version —
