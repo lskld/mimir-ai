@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using GenerativeAI;
 using Mimir.API.Data.Repositories;
 using Mimir.API.Models.Domain;
 using Mimir.API.Models.Responses;
@@ -10,6 +11,7 @@ public class FullTrainingProgramService(
     IHierarchyRepository hierarchyRepository,
     ITrainingRepository trainingRepository,
     IFullTrainingProgramRepository fullProgramRepository,
+    IConfiguration configuration,
     ILogger<FullTrainingProgramService> logger) : IFullTrainingProgramService
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
@@ -162,46 +164,143 @@ public class FullTrainingProgramService(
     public Task<byte[]> ExportScormAsync(Guid roleId) =>
         throw new NotImplementedException("Implemented in Step 31");
 
-    // TODO (Step 29): Call Gemini with GenerateLessonContent.txt prompt.
-    // Input: learning objective, module title, AMLR article reference, role name, risk profile.
-    // Output: 2-3 paragraphs of instructional text (plain text, no markdown).
-    private Task<string> GenerateLessonContentAsync(
+    private async Task<string> GenerateLessonContentAsync(
         string objective,
         string moduleTitle,
         string? amlrArticle,
         string roleName,
         Dictionary<string, string> riskProfile)
     {
-        logger.LogDebug(
-            "GenerateLessonContent stub called for objective '{Objective}' in module '{ModuleTitle}'",
-            objective, moduleTitle);
-        return Task.FromResult(string.Empty);
+        var sw = Stopwatch.StartNew();
+        var promptPath = Path.Combine(AppContext.BaseDirectory, "Prompts", "GenerateLessonContent.txt");
+        var systemPrompt = await File.ReadAllTextAsync(promptPath);
+
+        var riskSummary = string.Join(", ", riskProfile.Select(kv => $"{kv.Key}: {kv.Value}"));
+        var userPrompt = $"""
+            Module: {moduleTitle}
+            Learning Objective: {objective}
+            AMLR Article: {amlrArticle ?? "Not specified"}
+            Role: {roleName}
+            Risk Profile: {riskSummary}
+            """;
+
+        var result = await CallGeminiAsync(systemPrompt, userPrompt);
+        sw.Stop();
+
+        logger.LogInformation(
+            "GenerateLessonContent complete for objective '{Objective}' in {Elapsed:F1}s",
+            objective, sw.Elapsed.TotalSeconds);
+
+        return result.Trim();
     }
 
-    // TODO (Step 29): Call Gemini with GenerateQuizQuestions.txt prompt.
-    // Input: learning objective, AMLR article, role name.
-    // Output: JSON array of 3-5 multiple-choice questions with A/B/C/D options, correct answer, explanation.
-    private Task<List<QuizQuestionResponse>> GenerateQuizQuestionsAsync(
+    private async Task<List<QuizQuestionResponse>> GenerateQuizQuestionsAsync(
         string objective,
         string? amlrArticle,
         string roleName)
     {
-        logger.LogDebug(
-            "GenerateQuizQuestions stub called for objective '{Objective}'", objective);
-        return Task.FromResult(new List<QuizQuestionResponse>());
+        var sw = Stopwatch.StartNew();
+        var promptPath = Path.Combine(AppContext.BaseDirectory, "Prompts", "GenerateQuizQuestions.txt");
+        var systemPrompt = await File.ReadAllTextAsync(promptPath);
+
+        var userPrompt = $"""
+            Learning Objective: {objective}
+            AMLR Article: {amlrArticle ?? "Not specified"}
+            Role: {roleName}
+            """;
+
+        var rawJson = await CallGeminiAsync(systemPrompt, userPrompt);
+        sw.Stop();
+
+        var cleanJson = StripMarkdownFences(rawJson);
+        List<QuizQuestionResponse>? questions;
+        try
+        {
+            questions = JsonSerializer.Deserialize<List<QuizQuestionResponse>>(cleanJson, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            logger.LogWarning(
+                "Failed to parse quiz questions JSON for objective '{Objective}' — returning empty list. Raw: {Raw}",
+                objective, rawJson);
+            return [];
+        }
+
+        logger.LogInformation(
+            "GenerateQuizQuestions complete: {Count} questions for objective '{Objective}' in {Elapsed:F1}s",
+            questions?.Count ?? 0, objective, sw.Elapsed.TotalSeconds);
+
+        return questions ?? [];
     }
 
-    // TODO (Step 29): Call Gemini with GenerateScenarios.txt prompt.
-    // Input: module topic, AMLR article, role name, risk profile.
-    // Output: JSON array of 1-2 case-study scenarios with title, description, complication, discussion questions.
-    private Task<List<ScenarioResponse>> GenerateScenariosAsync(
+    private async Task<List<ScenarioResponse>> GenerateScenariosAsync(
         string moduleTopic,
         string? amlrArticle,
         string roleName,
         Dictionary<string, string> riskProfile)
     {
-        logger.LogDebug(
-            "GenerateScenarios stub called for module '{ModuleTopic}'", moduleTopic);
-        return Task.FromResult(new List<ScenarioResponse>());
+        var sw = Stopwatch.StartNew();
+        var promptPath = Path.Combine(AppContext.BaseDirectory, "Prompts", "GenerateScenarios.txt");
+        var systemPrompt = await File.ReadAllTextAsync(promptPath);
+
+        var riskSummary = string.Join(", ", riskProfile.Select(kv => $"{kv.Key}: {kv.Value}"));
+        var userPrompt = $"""
+            Module Topic: {moduleTopic}
+            AMLR Article: {amlrArticle ?? "Not specified"}
+            Role: {roleName}
+            Risk Profile: {riskSummary}
+            """;
+
+        var rawJson = await CallGeminiAsync(systemPrompt, userPrompt);
+        sw.Stop();
+
+        var cleanJson = StripMarkdownFences(rawJson);
+        List<ScenarioResponse>? scenarios;
+        try
+        {
+            scenarios = JsonSerializer.Deserialize<List<ScenarioResponse>>(cleanJson, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            logger.LogWarning(
+                "Failed to parse scenarios JSON for module '{ModuleTopic}' — returning empty list. Raw: {Raw}",
+                moduleTopic, rawJson);
+            return [];
+        }
+
+        logger.LogInformation(
+            "GenerateScenarios complete: {Count} scenarios for module '{ModuleTopic}' in {Elapsed:F1}s",
+            scenarios?.Count ?? 0, moduleTopic, sw.Elapsed.TotalSeconds);
+
+        return scenarios ?? [];
+    }
+
+    private async Task<string> CallGeminiAsync(string systemPrompt, string userPrompt)
+    {
+        try
+        {
+            var apiKey = configuration["Gemini:ApiKey"];
+            var modelName = configuration["Gemini:Model"];
+            var client = new GenerativeModel(apiKey!, modelName!);
+            var response = await client.GenerateContentAsync(systemPrompt + "\n\n" + userPrompt);
+            return response.Text;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Gemini API call failed: {Message}", ex.Message);
+            throw new InvalidOperationException($"Gemini API call failed: {ex.Message}", ex);
+        }
+    }
+
+    private static string StripMarkdownFences(string raw)
+    {
+        var clean = raw.Trim();
+        if (clean.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
+            clean = clean["```json".Length..].TrimStart();
+        else if (clean.StartsWith("```"))
+            clean = clean["```".Length..].TrimStart();
+        if (clean.EndsWith("```"))
+            clean = clean[..^3].TrimEnd();
+        return clean;
     }
 }
