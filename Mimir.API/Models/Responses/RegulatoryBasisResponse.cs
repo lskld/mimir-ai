@@ -11,7 +11,7 @@ public class RegulatoryBasisResponse
 }
 
 /// <summary>
-/// Tolerates the three shapes Gemini uses for amlrArticle:
+/// Tolerates the three shapes the LLM uses for amlrArticle:
 ///   integer  →  6            serialised as "6"
 ///   string   →  "Preamble"   serialised as-is
 ///   array    →  [6, 25, 26]  serialised as "6, 25, 26"

@@ -31,6 +31,11 @@ builder.Services.AddScoped<IFullTrainingProgramRepository, FullTrainingProgramRe
 builder.Services.AddScoped<IFullTrainingProgramService, FullTrainingProgramService>();
 builder.Services.AddScoped<IScormPackageService, ScormPackageService>();
 
+// LLM provider — OpenRouter via typed HttpClient. The typed-client + interface
+// pattern registers a single class as both ILlmService and the HttpClient consumer,
+// so the IHttpClientFactory-managed HttpClient is correctly injected.
+builder.Services.AddHttpClient<ILlmService, OpenRouterLlmService>();
+
 // 3. OpenAPI
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -86,10 +91,10 @@ app.MapVaultEndpoints();
 app.MapRoleTrainingEndpoints();
 app.MapFullTrainingProgramEndpoints();
 
-// 10. Validate Gemini API key on startup so misconfiguration is caught immediately.
-var geminiApiKey = app.Configuration["Gemini:ApiKey"];
-if (string.IsNullOrWhiteSpace(geminiApiKey))
+// 10. Validate OpenRouter API key on startup so misconfiguration is caught immediately.
+var openRouterApiKey = app.Configuration["OpenRouter:ApiKey"];
+if (string.IsNullOrWhiteSpace(openRouterApiKey))
     throw new InvalidOperationException(
-        "Gemini:ApiKey is not configured. Set it via user-secrets or the Gemini__ApiKey environment variable.");
+        "OpenRouter:ApiKey is not configured. Set it via user-secrets or the OpenRouter__ApiKey environment variable.");
 
 app.Run();

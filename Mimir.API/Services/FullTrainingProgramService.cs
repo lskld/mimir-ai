@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.Json;
-using GenerativeAI;
 using Mimir.API.Data.Repositories;
 using Mimir.API.Models.Domain;
 using Mimir.API.Models.Responses;
@@ -11,7 +10,7 @@ public class FullTrainingProgramService(
     IHierarchyRepository hierarchyRepository,
     ITrainingRepository trainingRepository,
     IFullTrainingProgramRepository fullProgramRepository,
-    IConfiguration configuration,
+    ILlmService llmService,
     ILogger<FullTrainingProgramService> logger) : IFullTrainingProgramService
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
@@ -184,7 +183,7 @@ public class FullTrainingProgramService(
             Risk Profile: {riskSummary}
             """;
 
-        var result = await CallGeminiAsync(systemPrompt, userPrompt);
+        var result = await llmService.CallLlmAsync(systemPrompt + "\n\n" + userPrompt);
         sw.Stop();
 
         logger.LogInformation(
@@ -209,7 +208,7 @@ public class FullTrainingProgramService(
             Role: {roleName}
             """;
 
-        var rawJson = await CallGeminiAsync(systemPrompt, userPrompt);
+        var rawJson = await llmService.CallLlmAsync(systemPrompt + "\n\n" + userPrompt);
         sw.Stop();
 
         var cleanJson = StripMarkdownFences(rawJson);
@@ -251,7 +250,7 @@ public class FullTrainingProgramService(
             Risk Profile: {riskSummary}
             """;
 
-        var rawJson = await CallGeminiAsync(systemPrompt, userPrompt);
+        var rawJson = await llmService.CallLlmAsync(systemPrompt + "\n\n" + userPrompt);
         sw.Stop();
 
         var cleanJson = StripMarkdownFences(rawJson);
@@ -273,23 +272,6 @@ public class FullTrainingProgramService(
             scenarios?.Count ?? 0, moduleTopic, sw.Elapsed.TotalSeconds);
 
         return scenarios ?? [];
-    }
-
-    private async Task<string> CallGeminiAsync(string systemPrompt, string userPrompt)
-    {
-        try
-        {
-            var apiKey = configuration["Gemini:ApiKey"];
-            var modelName = configuration["Gemini:Model"];
-            var client = new GenerativeModel(apiKey!, modelName!);
-            var response = await client.GenerateContentAsync(systemPrompt + "\n\n" + userPrompt);
-            return response.Text;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Gemini API call failed: {Message}", ex.Message);
-            throw new InvalidOperationException($"Gemini API call failed: {ex.Message}", ex);
-        }
     }
 
     private static string StripMarkdownFences(string raw)
