@@ -20,6 +20,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from "@/components/ui/sidebar"
+import { NewDocumentSheet } from "@/components/new-document-sheet"
 import { usePathname, useRouter } from "next/navigation"
 
 export default function DashboardLayout({
@@ -83,8 +84,9 @@ export default function DashboardLayout({
       </Sidebar>
 
       <SidebarInset>
-        <header className="flex h-14 items-center border-b px-4">
+        <header className="flex h-14 items-center justify-between gap-4 border-b px-4">
           <h1 className="text-sm font-medium">{pageTitle}</h1>
+          {pathname === "/vault" ? <NewDocumentSheet /> : null}
         </header>
         <main className="flex-1 p-4">{children}</main>
       </SidebarInset>

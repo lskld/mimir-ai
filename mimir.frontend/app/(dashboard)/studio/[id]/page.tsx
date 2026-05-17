@@ -67,7 +67,7 @@ export default function StudioDocumentPage() {
   if (!documentId) {
     return (
       <p className="text-destructive text-sm" role="alert">
-        Invalid document id in the URL. Upload a document from Home.
+        Invalid document id in the URL. Upload a document from Documents.
       </p>
     )
   }
