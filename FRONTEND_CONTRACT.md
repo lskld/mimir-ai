@@ -16,7 +16,7 @@ http://localhost:5003
 ```
 
 **Running the backend locally**
-You need the .NET 10 SDK installed. Clone the repo, open a terminal in the project root, and run `dotnet run --project Mimir.API`. The server starts at `http://localhost:5003`. You also need a Google Gemini API key — set it with `dotnet user-secrets set "Gemini:ApiKey" "<your-key>" --project Mimir.API` before the AI analysis endpoints will work.
+You need the .NET 10 SDK installed. Clone the repo, open a terminal in the project root, and run `dotnet run --project Mimir.API`. The server starts at `http://localhost:5003`. The backend uses [OpenRouter](https://openrouter.ai) as its LLM provider (currently routing to `google/gemini-2.5-flash-lite`) — set the API key with `dotnet user-secrets set "OpenRouter:ApiKey" "<your-key>" --project Mimir.API` before any AI endpoints will work. The server throws on startup if the key is missing.
 
 **General notes**
 - All request and response bodies are JSON unless the endpoint uses file upload (see §2).
@@ -30,19 +30,33 @@ You need the .NET 10 SDK installed. Clone the repo, open a terminal in the proje
 
 ### Error Format
 
-Error responses follow a standard structure with a `status` code, a short `title`, and optional `detail` string:
+A global exception-handling middleware maps the three domain exception types to HTTP status codes and returns a uniform JSON body for all `4xx` and `5xx` responses:
 
 ```json
 {
-  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
-  "title": "Not Found",
   "status": 404,
-  "detail": "No document found with the given id.",
-  "traceId": "00-a1b2c3d4e5f6a7b8-c9d0e1f2-00"
+  "title": "Not Found",
+  "detail": "Role 33333333-3333-3333-3333-333333333333 not found",
+  "instance": "/api/training/roles/33333333-3333-3333-3333-333333333333/full-program/status"
 }
 ```
 
-For simple validation errors (e.g. missing required field) the response body is a plain string:
+| Field | Type | Notes |
+|-------|------|-------|
+| `status` | number | The HTTP status code (mirrors the response status line) |
+| `title` | string | Short label: `"Not Found"`, `"Bad Request"`, `"Conflict"`, `"Internal Server Error"` |
+| `detail` | string | Human-readable description; safe to surface in dev tooling, do not show raw to end users |
+| `instance` | string | The request path that produced the error |
+
+A few endpoints (`GET /api/training/roles/{roleId}/outline`, `POST /api/training/roles/{roleId}/approve`, `GET /api/training/roles/{roleId}/full-program`) return their `409 Conflict` responses with a small ad-hoc body shape:
+
+```json
+{ "message": "Program generation still in progress." }
+```
+
+For these, treat the `message` field as the human-readable explanation. The HTTP status code is always the authoritative signal — branch on the status first, then read the body for context.
+
+For simple validation errors on a few legacy endpoints (e.g. `POST /api/analysis` with a missing field), the response body is a plain string:
 ```
 "DocumentId and RegulationType are required."
 ```
@@ -770,9 +784,12 @@ Triggers the training generation pipeline for a role. The pipeline loads the rol
 ```json
 {
   "roleId": "33333333-3333-3333-3333-333333333333",
-  "status": "Generating"
+  "status": "Generating",
+  "message": "Training generation started. Poll /api/training/roles/{roleId}/status for updates."
 }
 ```
+
+The `Location` response header also points to the status endpoint.
 
 **Polling pattern — what to do after receiving 202:**
 
@@ -799,26 +816,27 @@ async function pollForTraining(roleId) {
     }
 
     if (status.status === "Failed") {
-      throw new Error("Training generation failed");
+      throw new Error(status.errorMessage ?? "Training generation failed");
     }
 
-    // status === "Generating" — keep polling
+    // status === "Generating" or "Pending" — keep polling
   }
 }
 ```
+
+**Empty vault note:** If the role has no inherited documents at all, the pipeline still completes successfully — the resulting outline just has an empty `sections` array. There is no 409 for "vault is empty". The UI should detect `sections.length === 0` and render a friendly "Assign documents to this role before viewing training" state.
 
 **Errors**
 
 | Status | When |
 |--------|------|
 | `404` | Role not found |
-| `409` | Role has no documents to train on (vault is empty for this role) |
 
 ---
 
 ### `GET /api/training/roles/{roleId}/status`
 
-Returns the current generation status for a role's training program. Use this endpoint to poll during the background generation job.
+Returns the current generation status for a role's training outline. Use this endpoint to poll during the background generation job.
 
 **Path parameters**
 
@@ -826,12 +844,34 @@ Returns the current generation status for a role's training program. Use this en
 |-------|------|-------------|
 | `roleId` | UUID | The ID of the role |
 
-**Response — `200 OK`**
+**Response — `200 OK`** — success
 
 ```json
 {
   "roleId": "33333333-3333-3333-3333-333333333333",
-  "status": "Ready"
+  "status": "Ready",
+  "lastUpdated": "2025-11-03T14:35:22Z"
+}
+```
+
+**Response — `200 OK`** — failure (extra `errorMessage` field)
+
+```json
+{
+  "roleId": "33333333-3333-3333-3333-333333333333",
+  "status": "Failed",
+  "lastUpdated": "2025-11-03T14:34:01Z",
+  "errorMessage": "LLM response was truncated at 4000 tokens (finish_reason=length). Increase max_tokens or shorten the input."
+}
+```
+
+**Response — `200 OK`** — never triggered (no record yet)
+
+```json
+{
+  "roleId": "33333333-3333-3333-3333-333333333333",
+  "status": "Pending",
+  "lastUpdated": null
 }
 ```
 
@@ -839,10 +879,10 @@ Returns the current generation status for a role's training program. Use this en
 
 | Value | Meaning |
 |-------|---------|
-| `"Pending"` | Training not yet triggered or re-triggered after reset |
+| `"Pending"` | Training not yet triggered for this role |
 | `"Generating"` | Pipeline is running — outline is not ready yet |
-| `"Ready"` | Outline is ready; call `GET /outline` to fetch it |
-| `"Failed"` | Pipeline encountered an error; check the document status endpoints for details |
+| `"Ready"` | Outline is ready (covers both `Draft` and `Approved` underlying states); call `GET /outline` to fetch it |
+| `"Failed"` | Pipeline encountered an error; `errorMessage` field is populated |
 
 **Errors**
 
@@ -866,17 +906,17 @@ Returns the role-specific training outline generated from all inherited document
 
 ```json
 {
-  "roleId": "33333333-3333-3333-3333-333333333333",
+  "documentId": "00000000-0000-0000-0000-000000000000",
+  "regulationType": "AMLR 2024/1624",
   "roleName": "Financial Analyst",
   "riskProfile": {
-    "amlRisk": "High",
-    "sanctionsRisk": "High",
-    "fraudRisk": "Medium",
-    "documentationRisk": "High",
-    "operationalRisk": "Medium"
+    "AmlRisk": "High",
+    "SanctionsRisk": "High",
+    "FraudRisk": "Medium",
+    "DocumentationRisk": "High",
+    "OperationalRisk": "Medium"
   },
   "generatedAt": "2025-11-03T14:35:22Z",
-  "approved": false,
   "sections": [
     {
       "title": "AML Regulatory Foundations",
@@ -886,7 +926,10 @@ Returns the role-specific training outline generated from all inherited document
         "Apply risk-based AML controls to customer profiles",
         "Document compliance findings with regulatory citations"
       ],
-      "regulatoryBasis": "AMLR 2024/1624 Article 10 (Risk Assessment)",
+      "regulatoryBasis": {
+        "amlrArticle": "10",
+        "articleTitle": "Risk Assessment"
+      },
       "citations": [
         {
           "text": "Financial institutions shall conduct a risk assessment to identify, assess, and understand the money laundering and terrorist financing risks.",
@@ -901,18 +944,20 @@ Returns the role-specific training outline generated from all inherited document
 }
 ```
 
+> **Note:** `documentId` is `00000000-0000-0000-0000-000000000000` (the empty UUID) for merged role outlines — this outline is synthesized from several source documents, not tied to a single one. Identify the role by the `roleName` field instead. Approval state is *not* on this body; query the `/status` endpoint (status `"Ready"` covers both `Draft` and `Approved`) and call `POST /approve` to advance.
+
 **Errors**
 
 | Status | When |
 |--------|------|
-| `404` | Role not found or training outline not yet generated |
-| `409` | Training is still generating — poll status until Ready |
+| `404` | Role not found (returned via the global error response shape) |
+| `409` | No outline generated yet, generation still in progress, or generation failed (body: `{ "message": "...", "errorMessage"?: "..." }`) |
 
 ---
 
 ### `POST /api/training/roles/{roleId}/approve`
 
-Marks a training outline as approved, indicating it is ready to be assigned to employees or exported for LMS integration.
+Marks a training outline as approved. Approval is a prerequisite for full program generation (see §8) and SCORM export. Calling this on an already-approved outline is a no-op — it returns the same outline body with `200 OK`.
 
 **Path parameters**
 
@@ -924,45 +969,286 @@ Marks a training outline as approved, indicating it is ready to be assigned to e
 
 **Response — `200 OK`**
 
-Returns the approved outline (same shape as `GET /outline` above), with `"approved": true`.
+Returns the outline body (same shape as `GET /outline` above). Approval state is persisted server-side but is *not* a field on this body; query `/status` if needed.
 
 **Errors**
 
 | Status | When |
 |--------|------|
-| `404` | Role not found or training outline not yet generated |
+| `404` | Role not found |
+| `409` | No outline exists yet for this role — body: `{ "message": "No outline to approve. Generate training first." }` |
 
 ---
 
-### `GET /api/training/roles/{roleId}/export/scorm`
+> **SCORM export moved.** Earlier drafts of this contract listed `GET /api/training/roles/{roleId}/export/scorm` here. That endpoint was replaced in Phase 6 by `GET /api/training/roles/{roleId}/full-program/export/scorm` (§8), which packages the *full* program — lesson text, quizzes, and scenarios — not just the outline. The outline by itself is no longer exportable.
 
-Exports an approved training outline in SCORM 1.2 format, suitable for upload to any standards-compliant Learning Management System (LMS). Returns a ZIP file containing the course content and metadata.
+---
+
+## 8. Full Training Program Endpoints (Phase 6)
+
+These endpoints generate and export a **complete, deliverable training course** for a role — lesson text, multiple-choice quizzes, and role-specific case-study scenarios — built on top of an approved training outline from §7.
+
+**Prerequisite chain:** Upload document → analyze → assign to vault → generate role outline → **approve role outline** → generate full program → poll status → fetch program / export SCORM.
+
+Generation takes 2–5 minutes for a typical AMLR-scale program (~50 LLM calls). Always trigger via `POST /generate` and poll `/status`; never await the response synchronously.
+
+### `POST /api/training/roles/{roleId}/full-program/generate`
+
+Triggers the full-program generation pipeline for a role. The pipeline loops through each module in the approved outline and calls the LLM three times per module (lesson content per objective, quiz questions per objective, role-specific scenarios per module). Returns 202 immediately; the actual work runs in the background.
 
 **Path parameters**
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `roleId` | UUID | The ID of the role with an approved outline |
+| `roleId` | UUID | The ID of a role whose training outline is in `Approved` state |
 
-**Response — `200 OK`** — ZIP file (SCORM 1.2 package)
+**Request body** — none
 
-The response has `Content-Type: application/zip` and `Content-Disposition: attachment; filename="training-{roleId}.zip"`.
+**Response — `202 Accepted`**
 
-The ZIP contains:
-- `imsmanifest.xml` — SCORM metadata and course structure
-- `content/` — HTML modules corresponding to each section
-- `content/assets/` — CSS styling and referenced documents
+```json
+{
+  "status": "Generating",
+  "roleId": "33333333-3333-3333-3333-333333333333",
+  "errorMessage": null
+}
+```
+
+The `Location` response header points to the status endpoint.
 
 **Errors**
 
 | Status | When |
 |--------|------|
-| `404` | Role not found or training outline not approved |
-| `409` | Training outline exists but is not yet approved |
+| `404` | Role not found |
+| `409` | No training outline exists for this role yet (`detail: "No training outline exists for role '…'. Generate and approve a training outline first."`) |
+| `409` | Training outline exists but is not in `Approved` state (`detail: "Training outline for role '…' is not approved (current status: Draft). …"`) |
+| `409` | A full-program generation is already running for this role (`detail: "Full program generation is already in progress for role '…'. …"`) |
 
 ---
 
-## 8. Data Models Reference
+### `GET /api/training/roles/{roleId}/full-program/status`
+
+Returns the current generation status for a role's full program. Poll this every 3–5 seconds after triggering — generation is significantly slower than outline generation.
+
+**Path parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `roleId` | UUID | The ID of the role |
+
+**Response — `200 OK`** — success
+
+```json
+{
+  "status": "Ready",
+  "roleId": "33333333-3333-3333-3333-333333333333",
+  "errorMessage": null
+}
+```
+
+**Response — `200 OK`** — failure (extra `errorMessage` field is populated)
+
+```json
+{
+  "status": "Failed",
+  "roleId": "33333333-3333-3333-3333-333333333333",
+  "errorMessage": "LLM response was truncated at 16000 tokens (finish_reason=length). Increase max_tokens or shorten the input."
+}
+```
+
+**`status` values**
+
+| Value | Meaning |
+|-------|---------|
+| `"Generating"` | Pipeline is running |
+| `"Ready"` | Program is ready; call `GET /full-program` to fetch the content or `GET /full-program/export/scorm` to download the ZIP |
+| `"Failed"` | Pipeline failed; `errorMessage` describes the cause |
+
+Note: there is no `"Pending"` status for the full program — if generation has never been triggered, the status endpoint returns `404`.
+
+**Errors**
+
+| Status | When |
+|--------|------|
+| `404` | Role not found |
+| `404` | No full-program record exists yet — generation hasn't been triggered (`detail: "No full training program record found for role '…'. Trigger generation first."`) |
+
+**Polling pattern:**
+
+```js
+const POLL_INTERVAL_MS = 4000;
+
+async function pollForFullProgram(roleId) {
+  while (true) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+
+    const res = await fetch(
+      `http://localhost:5003/api/training/roles/${roleId}/full-program/status`
+    );
+
+    if (res.status === 404) {
+      // No record yet — generation must not have been triggered
+      throw new Error("Full program was never triggered for this role");
+    }
+
+    const body = await res.json();
+
+    if (body.status === "Ready") return body;
+    if (body.status === "Failed") throw new Error(body.errorMessage ?? "Generation failed");
+    // status === "Generating" — keep polling
+  }
+}
+```
+
+---
+
+### `GET /api/training/roles/{roleId}/full-program`
+
+Returns the full program once generation is `Ready`. The body contains every lesson paragraph, quiz question, and scenario produced by the pipeline.
+
+**Path parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `roleId` | UUID | The ID of the role |
+
+**Response — `200 OK`**
+
+```json
+{
+  "roleId": "33333333-3333-3333-3333-333333333333",
+  "roleName": "Financial Analyst",
+  "regulationType": "AMLR 2024/1624",
+  "riskProfile": {
+    "AmlRisk": "High",
+    "SanctionsRisk": "High",
+    "FraudRisk": "Medium",
+    "DocumentationRisk": "High",
+    "OperationalRisk": "Medium"
+  },
+  "generatedAt": "2025-11-03T14:42:18Z",
+  "modules": [
+    {
+      "moduleTitle": "Customer Due Diligence for Financial Analysts",
+      "amlrArticle": "10",
+      "description": "Risk-based application of AMLR Article 10 to customer onboarding and ongoing monitoring.",
+      "objectives": [
+        {
+          "objective": "Apply enhanced due diligence to high-risk customer segments",
+          "lessonContent": "Under AMLR Article 10, financial institutions must conduct enhanced due diligence (EDD) when onboarding customers whose risk profile exceeds the standard threshold. For Financial Analysts, this means…\n\nIn practice, you will encounter EDD triggers in your daily portfolio review…\n\nConsider a case where a long-standing client requests a $5M transfer to a jurisdiction newly flagged by the FATF…",
+          "quizQuestions": [
+            {
+              "text": "Which of the following best describes the trigger for enhanced due diligence under AMLR Article 10?",
+              "options": {
+                "A": "Any transaction above $10,000",
+                "B": "Customer risk profile exceeds the institution's standard threshold",
+                "C": "A request from law enforcement",
+                "D": "The compliance officer's personal judgment"
+              },
+              "correctAnswer": "B",
+              "explanation": "AMLR Article 10 requires risk-based EDD. Threshold-based triggers (A) and discretionary judgment (D) are not the regulatory standard. Law enforcement requests (C) trigger separate obligations under STR rules."
+            }
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "title": "The Long-Standing Client and the Unusual Wire",
+          "description": "A client of 15 years, previously rated Low risk, has just requested a $5M outbound wire to a jurisdiction added last week to the FATF grey list. The relationship manager wants to process it quickly to preserve the relationship.",
+          "complication": "Documentation on the destination beneficiary is thin — the client says it is a 'family investment vehicle' and is reluctant to provide more detail. Your team lead is on vacation and the compliance officer is in another timezone.",
+          "discussionQuestions": [
+            "What would you do in this situation, and why?",
+            "What factors would change your decision?",
+            "Who else needs to be involved before this wire is released?"
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Errors**
+
+| Status | When |
+|--------|------|
+| `404` | Role not found |
+| `404` | No full-program record exists for this role (never triggered) |
+| `409` | Program is still generating — body: `{ "message": "Program generation still in progress." }` |
+| `409` | Program generation failed — body: `{ "message": "Program generation failed: <reason>" }` |
+| `409` | Program is in any other non-Ready state — body: `{ "message": "Program generation has not started." }` |
+
+---
+
+### `GET /api/training/roles/{roleId}/full-program/export/scorm`
+
+Streams a SCORM 1.2 compliant ZIP package containing the full program. The ZIP is ready to upload directly to any standards-compliant LMS, or to unzip and open `content/module_1.html` in a browser for a standalone preview.
+
+**Path parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `roleId` | UUID | The ID of a role whose full program is `Ready` |
+
+**Response — `200 OK`** — binary ZIP
+
+Response headers:
+```
+Content-Type: application/zip
+Content-Disposition: attachment; filename="training-course-financial-analyst.zip"
+```
+
+The filename is derived from the role name (lowercased, non-alphanumerics replaced with `-`).
+
+**ZIP contents:**
+```
+training-course-{role}.zip
+├── imsmanifest.xml          SCORM 1.2 metadata + course structure
+├── content/
+│   ├── module_1.html        Self-contained HTML module (inline CSS, embedded quiz JS)
+│   ├── module_2.html
+│   └── ...
+└── data/
+    └── quiz_data.json       Flat list of all quiz questions (for LMS integration)
+```
+
+Each `module_N.html` is fully self-contained: it embeds the relevant quiz data as a JavaScript constant and runs the quiz interaction locally, so the modules work both inside an LMS and when opened directly from the filesystem.
+
+**Errors**
+
+| Status | When |
+|--------|------|
+| `404` | Role not found |
+| `404` | No full-program record for this role |
+| `409` | Program is not in `Ready` state (`detail: "Program not ready for export. Current status: <status>."`) |
+
+**Download example (browser):**
+
+```js
+async function downloadScorm(roleId) {
+  const res = await fetch(
+    `http://localhost:5003/api/training/roles/${roleId}/full-program/export/scorm`
+  );
+  if (!res.ok) throw new Error(`SCORM export failed: ${res.status}`);
+
+  const blob = await res.blob();
+  const filename = res.headers
+    .get("content-disposition")
+    ?.match(/filename="([^"]+)"/)?.[1] ?? "training-course.zip";
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+```
+
+---
+
+## 9. Data Models Reference
 
 ### `DocumentResponse`
 
@@ -980,14 +1266,16 @@ Returned by document upload and document detail endpoints.
 
 ### `TrainingOutlineResponse`
 
-Returned by the outline and approve endpoints.
+Returned by both the document-level outline endpoints (§4) and the role-level outline endpoints (§7). The shape is shared, but `roleName` and `riskProfile` are only populated on role outlines.
 
 | Field | Type | Nullable | Notes |
 |-------|------|----------|-------|
-| `documentId` | UUID (string) | No | The document this outline belongs to |
-| `regulationType` | string | No | Regulation type used for analysis |
-| `generatedAt` | datetime (UTC ISO 8601) | No | When the AI generated this outline |
-| `sections` | array of `OutlineSectionResponse` | No | The training modules; may be empty during generation |
+| `documentId` | UUID (string) | No | Document this outline belongs to. For *role* outlines, this is the empty UUID `"00000000-0000-0000-0000-000000000000"` because role outlines are merged across many documents |
+| `regulationType` | string | No | Regulation type used for analysis (e.g. `"AMLR 2024/1624"`) |
+| `roleName` | string | Yes | `null` for document outlines; populated for role outlines |
+| `riskProfile` | object\<string, string\> | Yes | `null` for document outlines; populated for role outlines — keys are PascalCase (`AmlRisk`, `SanctionsRisk`, `FraudRisk`, `DocumentationRisk`, `OperationalRisk`), values are `"High"` \| `"Medium"` \| `"Low"` |
+| `generatedAt` | datetime (UTC ISO 8601) | No | When the LLM produced this outline |
+| `sections` | array of `OutlineSectionResponse` | No | The training modules; may be empty if the vault was empty when the role outline was generated |
 
 ---
 
@@ -1000,7 +1288,17 @@ One training module inside an outline.
 | `title` | string | No | Module title |
 | `description` | string | No | Brief summary of what this module covers |
 | `learningObjectives` | array of string | No | Bullet-point outcomes for learners |
+| `regulatoryBasis` | `RegulatoryBasisResponse` | Yes | Which AMLR article(s) this module derives from |
 | `citations` | array of `CitationResponse` | No | Source passages that back this section |
+
+---
+
+### `RegulatoryBasisResponse`
+
+| Field | Type | Nullable | Notes |
+|-------|------|----------|-------|
+| `amlrArticle` | string | No | Article number(s) as a string. The LLM returns this in three shapes (integer `6`, string `"Preamble"`, or array `[6, 25, 26]`); the server normalizes all three to a string (`"6"`, `"Preamble"`, `"6, 25, 26"`). Always parse defensively |
+| `articleTitle` | string | No | Human-readable article title, e.g. `"Risk Assessment"` |
 
 ---
 
@@ -1086,6 +1384,98 @@ One document entry in a resolved or direct document set.
 
 ---
 
+### `ErrorResponse`
+
+Returned by the global exception-handling middleware for all `4xx` (except the legacy 400 string and the 409 `{ message }` bodies on a handful of training endpoints) and all `5xx` responses.
+
+| Field | Type | Nullable | Notes |
+|-------|------|----------|-------|
+| `status` | number | No | Mirrors the HTTP status code |
+| `title` | string | No | Short label (`"Not Found"`, `"Bad Request"`, `"Conflict"`, `"Internal Server Error"`) |
+| `detail` | string | No | Human-readable description |
+| `instance` | string | Yes | The request path that produced the error |
+
+---
+
+### `FullProgramStatusResponse`
+
+Returned by `POST /api/training/roles/{roleId}/full-program/generate` and `GET /api/training/roles/{roleId}/full-program/status`.
+
+| Field | Type | Nullable | Notes |
+|-------|------|----------|-------|
+| `status` | string | No | `"Generating"`, `"Ready"`, or `"Failed"` |
+| `roleId` | UUID (string) | No | The role this status pertains to |
+| `errorMessage` | string | Yes | Populated only when `status === "Failed"`; otherwise `null` |
+
+---
+
+### `FullTrainingProgramResponse`
+
+Returned by `GET /api/training/roles/{roleId}/full-program`. The complete, deliverable training course for a role.
+
+| Field | Type | Nullable | Notes |
+|-------|------|----------|-------|
+| `roleId` | UUID (string) | No | The role this program was generated for |
+| `roleName` | string | No | Display name of the role |
+| `regulationType` | string | No | Defaults to `"AMLR 2024/1624"` |
+| `riskProfile` | object\<string, string\> | Yes | Snapshot of the role's risk profile at generation time. Keys are PascalCase (see `TrainingOutlineResponse`) |
+| `modules` | array of `FullTrainingModuleResponse` | No | One entry per module from the approved outline |
+| `generatedAt` | datetime (UTC ISO 8601) | No | When generation completed |
+
+---
+
+### `FullTrainingModuleResponse`
+
+One module in the full program.
+
+| Field | Type | Nullable | Notes |
+|-------|------|----------|-------|
+| `moduleTitle` | string | No | Inherited from the approved outline's section title |
+| `amlrArticle` | string | Yes | AMLR article reference (e.g. `"10"` or `"6, 25"`); inherited from the outline section's `regulatoryBasis.amlrArticle` |
+| `description` | string | Yes | Inherited from the outline section's description |
+| `objectives` | array of `LessonObjectiveResponse` | No | One entry per learning objective in the source section |
+| `scenarios` | array of `ScenarioResponse` | No | 1–2 LLM-generated case studies per module |
+
+---
+
+### `LessonObjectiveResponse`
+
+One learning objective inside a module, with generated lesson content and quiz.
+
+| Field | Type | Nullable | Notes |
+|-------|------|----------|-------|
+| `objective` | string | No | Inherited verbatim from the outline section's `learningObjectives` array |
+| `lessonContent` | string | No | 2–3 paragraphs of plain-text instructional content. May be an empty string if the LLM call failed or returned empty |
+| `quizQuestions` | array of `QuizQuestionResponse` | No | 3–5 multiple-choice questions assessing the objective. May be empty if the LLM call failed or returned invalid JSON |
+
+---
+
+### `QuizQuestionResponse`
+
+One multiple-choice question.
+
+| Field | Type | Nullable | Notes |
+|-------|------|----------|-------|
+| `text` | string | No | Question text, ending with a `?` |
+| `options` | object\<string, string\> | No | Always has exactly four keys: `"A"`, `"B"`, `"C"`, `"D"`. Values are the option text |
+| `correctAnswer` | string | No | One of `"A"`, `"B"`, `"C"`, `"D"` |
+| `explanation` | string | No | Explains why the correct answer is right (and often why a distractor is wrong); may cite the AMLR article |
+
+---
+
+### `ScenarioResponse`
+
+One case-study scenario for facilitated discussion.
+
+| Field | Type | Nullable | Notes |
+|-------|------|----------|-------|
+| `title` | string | No | Short descriptive title (5–10 words) |
+| `description` | string | No | The situation setup — who, what, what's known |
+| `complication` | string | No | The specific decision point the learner must navigate |
+| `discussionQuestions` | array of string | No | 3–4 questions; at least one is "What would you do?"-style |
+
+---
+
 ### Request Models
 
 #### `AnalyzeDocumentRequest`
@@ -1134,7 +1524,7 @@ One document entry in a resolved or direct document set.
 
 ---
 
-## 8. Key Concepts for the Frontend Developer
+## 10. Key Concepts for the Frontend Developer
 
 ### The Three-Level Hierarchy
 
@@ -1239,12 +1629,44 @@ This risk-based calibration ensures compliance training is proportionate to actu
 
 ---
 
-## 9. Frontend Integration Notes
+### Two-Stage Training Generation (Outline → Full Program)
+
+Mimir generates training in two distinct stages, with an explicit human approval gate between them:
+
+| Stage | Endpoint family | Output | Approx. time |
+|-------|----------------|--------|--------------|
+| **1. Role outline** | `/api/training/roles/{roleId}/...` | Module titles, learning objectives, regulatory citations | 30–90 seconds |
+| **2. Full program** | `/api/training/roles/{roleId}/full-program/...` | Lesson paragraphs, MCQ quizzes, scenarios, SCORM ZIP | 2–5 minutes |
+
+**Why two stages:**
+
+- The outline is **cheap and fast** — the user can iterate on the structure (re-run if unhappy, edit assignments in the vault) without paying for full content generation.
+- The full program is **expensive** (~50 LLM calls per AMLR-scale role at ~$0.05 each via OpenRouter). It only runs once the outline has been explicitly approved.
+- The full program is **read-only after generation**. There is no re-generate-while-keeping-content endpoint — to regenerate, you simply call `POST /full-program/generate` again and the old record is overwritten.
+
+**Recommended UI flow:**
+
+1. Trigger outline generation → poll `/status` → render outline → user reviews → user clicks "Approve outline".
+2. Show a "Generate full course" button (disabled until outline is approved).
+3. On click, trigger full-program generation → show a determinate-progress-style polling indicator (4-second interval recommended).
+4. When status is `"Ready"`, show two CTAs: "Preview full course" (calls `GET /full-program`) and "Download SCORM" (calls `GET /full-program/export/scorm`).
+
+**Error recovery:** If full-program generation fails (LLM rate limit, truncation, network error), the status will read `"Failed"` with an `errorMessage`. The UI should show the message and offer a "Retry" button that simply calls `POST /full-program/generate` again — the new run overwrites the failed record.
+
+---
+
+## 11. Frontend Integration Notes
 
 - **CORS**: The backend allows requests from `http://localhost:5173` (Vite default) and `http://localhost:3000` (Next.js default). No extra CORS setup needed on the frontend.
 - **File upload limit**: 20 MB per file. Show an error before attempting upload if the file exceeds this.
 - **Accepted file types**: `.pdf` and `.docx` only. Filter the `<input type="file">` with `accept=".pdf,.docx"`.
 - **All IDs are UUID strings**: Store and pass them as strings, never as numbers.
-- **Polling interval**: Poll `GET /api/analysis/{documentId}/outline` every **2 seconds** after triggering analysis.
-- **Empty arrays vs null**: Array fields (e.g. `sections`, `documents`, `departments`) are always returned as arrays — never `null`. Missing optional string fields (e.g. `description`, `geography`) may be `null`.
+- **Polling intervals**:
+  - Document analysis outline (`GET /api/analysis/{documentId}/outline`): every **2 seconds**.
+  - Role training outline (`GET /api/training/roles/{roleId}/status`): every **2–3 seconds**.
+  - Full program (`GET /api/training/roles/{roleId}/full-program/status`): every **4 seconds** — generation takes 2–5 minutes and aggressive polling wastes requests.
+- **SCORM download**: Use `fetch` + `Blob` + a hidden `<a download>` link (see the snippet in §8). Do not set `window.location` directly — it can be hard to surface errors that way.
+- **Empty arrays vs null**: Array fields (e.g. `sections`, `documents`, `departments`, `modules`, `quizQuestions`, `scenarios`) are always returned as arrays — never `null`. Missing optional string fields (e.g. `description`, `geography`, `amlrArticle`) may be `null`.
 - **`targetType` is case-insensitive** on the server side, but use the cased versions (`"OrganizationLevel"`, `"Department"`, `"Role"`) for consistency.
+- **Risk profile keys are PascalCase**: `AmlRisk`, `SanctionsRisk`, `FraudRisk`, `DocumentationRisk`, `OperationalRisk`. The `POST /hierarchy/roles` request body uses camelCase (`amlRisk`, …) but the response payloads inside `TrainingOutlineResponse.riskProfile` and `FullTrainingProgramResponse.riskProfile` use PascalCase. This asymmetry comes from how each side serializes; just match what the responses actually return.
+- **LLM-generated content may be empty.** If an individual LLM call fails or returns malformed JSON during full-program generation, the affected `lessonContent` will be `""` and the `quizQuestions` / `scenarios` array will be `[]` — the rest of the program is preserved. The frontend should render an inline placeholder ("Lesson content could not be generated for this objective") rather than crashing.
