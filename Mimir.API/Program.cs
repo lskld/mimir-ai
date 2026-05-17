@@ -84,6 +84,7 @@ app.MapAnalysisEndpoints();
 app.MapHierarchyEndpoints();
 app.MapVaultEndpoints();
 app.MapRoleTrainingEndpoints();
+app.MapFullTrainingProgramEndpoints();
 
 // 10. Validate Gemini API key on startup so misconfiguration is caught immediately.
 var geminiApiKey = app.Configuration["Gemini:ApiKey"];
