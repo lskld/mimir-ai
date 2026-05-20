@@ -10,7 +10,6 @@ import {
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -62,14 +61,9 @@ export default function DashboardLayout({
                 M
               </span>
             </span>
-            <div className="flex min-w-0 flex-col">
-              <span className="font-heading text-sm font-semibold leading-tight tracking-tight">
-                Mimir AI
-              </span>
-              <span className="text-[10px] text-muted-foreground leading-tight">
-                Compliance training
-              </span>
-            </div>
+            <span className="font-heading text-sm font-semibold leading-tight tracking-tight">
+              Mimir AI
+            </span>
           </div>
         </SidebarHeader>
 
@@ -104,16 +98,6 @@ export default function DashboardLayout({
           </SidebarGroup>
         </SidebarContent>
 
-        <SidebarFooter className="border-t border-border px-4 py-3">
-          <div className="space-y-0.5">
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-              Version
-            </p>
-            <p className="text-xs text-foreground/80">
-              v0.1.0 — Hackathon Build
-            </p>
-          </div>
-        </SidebarFooter>
       </Sidebar>
 
       <SidebarInset className="bg-background">

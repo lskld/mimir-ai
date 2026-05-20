@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { CheckCircle2, FileText, Loader2, Play } from "lucide-react"
+import { CheckCircle2, Loader2, Play } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/mimir/status-badge"
@@ -90,30 +90,18 @@ export function DocumentCard({ document }: DocumentCardProps) {
           isApproved && "border-success/30"
         )}
       >
-        <div className="flex items-start gap-3">
-          <span
-            className={cn(
-              "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-              isApproved
-                ? "bg-success/15 text-success"
-                : "bg-blue-subtle/40 text-primary"
-            )}
-          >
-            <FileText className="size-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-medium leading-tight" title={document.originalFileName}>
-              {document.originalFileName}
-            </p>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              {fileExt ? <Badge variant="outline" size="sm">{fileExt}</Badge> : null}
-              {document.regulationType ? (
-                <Badge variant="primary" size="sm">{document.regulationType}</Badge>
-              ) : null}
-              <span className="text-[11px] text-muted-foreground">
-                {formatDate(document.uploadedAt)}
-              </span>
-            </div>
+        <div className="min-w-0">
+          <p className="truncate font-medium leading-tight" title={document.originalFileName}>
+            {document.originalFileName}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {fileExt ? <Badge variant="outline" size="sm">{fileExt}</Badge> : null}
+            {document.regulationType ? (
+              <Badge variant="primary" size="sm">{document.regulationType}</Badge>
+            ) : null}
+            <span className="text-[11px] text-muted-foreground">
+              {formatDate(document.uploadedAt)}
+            </span>
           </div>
         </div>
 
@@ -161,14 +149,19 @@ export function DocumentCard({ document }: DocumentCardProps) {
               </span>
             ) : null}
             {outline ? (
-              <Button size="sm" variant="outline" onClick={() => setViewerOpen(true)}>
-                View outline
-              </Button>
-            ) : null}
-            {outline && !isApproved ? (
-              <Button size="sm" onClick={() => setViewerOpen(true)}>
-                <CheckCircle2 className="size-3.5" />
-                Approve
+              <Button
+                size="sm"
+                variant={isApproved ? "outline" : "default"}
+                onClick={() => setViewerOpen(true)}
+              >
+                {isApproved ? (
+                  "View outline"
+                ) : (
+                  <>
+                    <CheckCircle2 className="size-3.5" />
+                    Approve
+                  </>
+                )}
               </Button>
             ) : null}
           </div>

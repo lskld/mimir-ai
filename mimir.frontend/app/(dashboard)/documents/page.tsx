@@ -1,6 +1,5 @@
 "use client"
 
-import { FileText } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DocumentCard } from "@/components/documents/document-card"
 import { DocumentUploadZone } from "@/components/documents/document-upload-zone"
@@ -20,11 +19,6 @@ export default function DocumentsPage() {
     <div className="mx-auto max-w-5xl space-y-8">
       <header className="space-y-1.5">
         <h1 className="font-heading text-2xl font-semibold">Documents</h1>
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          Upload your compliance policies. Mimir parses each file, extracts
-          regulatory requirements, and proposes a training outline you can
-          review and approve.
-        </p>
       </header>
 
       <section>
@@ -32,18 +26,6 @@ export default function DocumentsPage() {
       </section>
 
       <section className="space-y-3">
-        <div className="flex items-baseline justify-between">
-          <h2 className="font-heading text-lg font-semibold">
-            Your documents
-          </h2>
-          {sorted.length > 0 ? (
-            <span className="text-xs text-muted-foreground">
-              {sorted.length}{" "}
-              {sorted.length === 1 ? "document" : "documents"}
-            </span>
-          ) : null}
-        </div>
-
         {documentsQuery.isPending ? (
           <div className="grid gap-3 sm:grid-cols-2">
             {[0, 1, 2].map((i) => (
@@ -70,17 +52,8 @@ export default function DocumentsPage() {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-surface px-6 py-12 text-center">
-      <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-blue-subtle/40 text-primary">
-        <FileText className="size-6" />
-      </span>
-      <div className="space-y-1">
-        <p className="font-heading font-semibold">No documents uploaded yet.</p>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          Upload your first policy document above. PDFs and DOCX files are
-          supported. Mimir will analyze it and propose a training outline.
-        </p>
-      </div>
+    <div className="flex items-center justify-center rounded-xl border border-dashed border-border bg-surface px-6 py-12">
+      <p className="text-sm text-muted-foreground">No documents yet</p>
     </div>
   )
 }

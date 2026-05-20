@@ -5,7 +5,6 @@ import { Building2, ChevronRight, RefreshCcw, UserCircle, Users } from "lucide-r
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { RiskBadge } from "@/components/mimir/risk-badge"
 import { NodeDetailPanel } from "@/components/organization/node-detail-panel"
 import { HierarchyEmptySetup } from "@/components/hierarchy/hierarchy-empty-setup"
 import { useHierarchy } from "@/lib/api/hooks/use-hierarchy"
@@ -55,14 +54,7 @@ export default function OrganizationPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1.5">
-          <h1 className="font-heading text-2xl font-semibold">Organization</h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Map your compliance hierarchy. Org levels feed departments; departments
-            feed roles. Documents assigned higher up are inherited down — assignments
-            at a lower level always win.
-          </p>
-        </div>
+        <h1 className="font-heading text-2xl font-semibold">Organization</h1>
         <Button
           variant="outline"
           size="sm"
@@ -368,10 +360,6 @@ function RoleColumn({
                         Draft
                       </Badge>
                     )}
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    <RiskBadge type="AML" risk={role.amlRisk} />
-                    <RiskBadge type="Sanctions" risk={role.sanctionsRisk} />
                   </div>
                 </button>
               </li>

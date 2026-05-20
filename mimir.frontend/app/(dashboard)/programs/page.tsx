@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowUpRight, BookOpen, Download, Eye, Workflow } from "lucide-react"
+import { ArrowUpRight, Download, Eye, Workflow } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/mimir/status-badge"
@@ -32,13 +32,7 @@ export default function ProgramsPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1.5">
-          <h1 className="font-heading text-2xl font-semibold">Programs</h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Every training program Mimir has generated. View module breakdowns
-            or export SCORM packages to your LMS.
-          </p>
-        </div>
+        <h1 className="font-heading text-2xl font-semibold">Programs</h1>
         <Button asChild variant="outline" size="sm">
           <Link href="/training">
             <Workflow className="size-3.5" />
@@ -102,9 +96,6 @@ function ProgramCard({
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-subtle/40 text-primary">
-          <BookOpen className="size-5" />
-        </span>
         <StatusBadge status={status} />
       </div>
       <div className="space-y-0.5">
@@ -167,18 +158,9 @@ function GridSkeleton() {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-surface px-6 py-12 text-center">
-      <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-blue-subtle/40 text-primary">
-        <BookOpen className="size-6" />
-      </span>
-      <div className="space-y-1">
-        <p className="font-heading font-semibold">No programs generated yet.</p>
-        <p className="max-w-md text-sm text-muted-foreground">
-          Complete the training pipeline for any role to generate its first
-          program. Lessons, quizzes, and case studies will land here.
-        </p>
-      </div>
-      <Button asChild>
+    <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border bg-surface px-6 py-12 text-center">
+      <p className="text-sm text-muted-foreground">No programs generated yet.</p>
+      <Button asChild variant="outline" size="sm">
         <Link href="/training">
           Open training pipeline
           <ArrowUpRight className="size-4" />
