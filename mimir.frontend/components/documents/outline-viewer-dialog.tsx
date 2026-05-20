@@ -195,9 +195,9 @@ function OutlineBody({ outline }: { outline: TrainingOutlineResponse }) {
                   Sources ({section.citations.length})
                 </summary>
                 <ul className="mt-3 space-y-2 border-t border-border pt-3">
-                  {section.citations.map((c) => (
+                  {section.citations.map((c, ci) => (
                     <li
-                      key={c.chunkId}
+                      key={`${c.chunkId}-${ci}`}
                       className="border-l-2 border-border pl-3 text-xs text-muted-foreground"
                     >
                       <p className="text-foreground/90">{c.text}</p>
