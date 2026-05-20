@@ -2,11 +2,10 @@
 
 import {
   BookOpen,
-  Eye,
+  Building2,
   FileText,
-  GraduationCap,
   LayoutDashboard,
-  ShieldCheck,
+  Workflow,
 } from "lucide-react"
 import {
   Sidebar,
@@ -21,8 +20,24 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from "@/components/ui/sidebar"
-import { NewDocumentSheet } from "@/components/new-document-sheet"
 import { usePathname, useRouter } from "next/navigation"
+import { cn } from "@/lib/utils"
+
+type MenuItem = {
+  label: string
+  href: string
+  icon: typeof LayoutDashboard
+  /** Description shown to humans, not in the nav. */
+  hint?: string
+}
+
+const MENU_ITEMS: MenuItem[] = [
+  { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Documents", href: "/documents", icon: FileText },
+  { label: "Organization", href: "/organization", icon: Building2 },
+  { label: "Training", href: "/training", icon: Workflow },
+  { label: "Programs", href: "/programs", icon: BookOpen },
+]
 
 export default function DashboardLayout({
   children,
@@ -31,70 +46,78 @@ export default function DashboardLayout({
 }>) {
   const router = useRouter()
   const pathname = usePathname()
-  const menuItems = [
-    { label: "Home", href: "/", icon: LayoutDashboard },
-    { label: "Documents", href: "/vault", icon: FileText },
-    { label: "Hierarchy", href: "/hierarchy", icon: ShieldCheck },
-    {
-      label: "Studio",
-      href: "/studio",
-      icon: GraduationCap,
-    },
-    {
-      label: "Programs",
-      href: "/programs",
-      icon: BookOpen,
-    },
-    {
-      label: "Employees",
-      href: "/preview",
-      icon: Eye,
-    },
-  ]
+
   const isMenuItemActive = (href: string) =>
     href === "/"
       ? pathname === "/"
       : pathname === href || pathname.startsWith(`${href}/`)
-  const pageTitle =
-    menuItems.find((item) => isMenuItemActive(item.href))?.label ?? "Home"
 
   return (
     <SidebarProvider>
-      <Sidebar>
-        <SidebarHeader className="h-14 justify-center gap-0 border-b px-4 py-0">
-          <div className="text-sm font-semibold">Mimir</div>
+      <Sidebar className="border-r border-border">
+        <SidebarHeader className="h-16 justify-center gap-0 border-b border-border px-4 py-0">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-[0_0_0_3px_var(--blue-glow)]">
+              <span className="font-heading text-lg font-bold leading-none">
+                M
+              </span>
+            </span>
+            <div className="flex min-w-0 flex-col">
+              <span className="font-heading text-sm font-semibold leading-tight tracking-tight">
+                Mimir AI
+              </span>
+              <span className="text-[10px] text-muted-foreground leading-tight">
+                Compliance training
+              </span>
+            </div>
+          </div>
         </SidebarHeader>
+
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent>
-              <SidebarMenu>
-                {menuItems.map((item) => (
-                  <SidebarMenuItem key={item.label}>
-                    <SidebarMenuButton
-                      className="cursor-pointer [&>svg]:size-[18px]"
-                      isActive={isMenuItemActive(item.href)}
-                      onClick={() => router.push(item.href)}
-                    >
-                      <item.icon />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+              <SidebarMenu className="gap-0.5 px-1.5 py-2">
+                {MENU_ITEMS.map((item) => {
+                  const active = isMenuItemActive(item.href)
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        isActive={active}
+                        onClick={() => router.push(item.href)}
+                        className={cn(
+                          "relative h-9 cursor-pointer rounded-md pl-3 text-sm [&>svg]:size-[18px]",
+                          // override default active bg with surface-elevated +
+                          // blue left-border indicator per spec
+                          active
+                            ? "bg-surface-elevated! text-foreground! before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary"
+                            : "text-muted-foreground hover:bg-surface-elevated hover:text-foreground"
+                        )}
+                      >
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-        <SidebarFooter className="h-14 justify-center gap-0 border-t px-4 py-0">
-          <div />
+
+        <SidebarFooter className="border-t border-border px-4 py-3">
+          <div className="space-y-0.5">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+              Version
+            </p>
+            <p className="text-xs text-foreground/80">
+              v0.1.0 — Hackathon Build
+            </p>
+          </div>
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset>
-        <header className="flex h-14 items-center justify-between gap-4 border-b px-4">
-          <h1 className="text-sm font-medium">{pageTitle}</h1>
-          {pathname === "/vault" ? <NewDocumentSheet /> : null}
-        </header>
-        <main className="flex-1 p-4">{children}</main>
+      <SidebarInset className="bg-background">
+        <main className="min-h-screen flex-1 p-6 lg:p-8">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   )
