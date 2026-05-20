@@ -87,20 +87,24 @@ export default function StudioDocumentPage() {
 
   const document = documentQuery.data
   const outline = outlineQuery.data ?? null
-  const isBusy =
-    isAnalyzing ||
-    startAnalysis.isPending ||
-    approveOutline.isPending ||
-    documentQuery.isFetching
+  const isOutlineApproved =
+    outline?.status === "Approved" ||
+    (approveOutline.isSuccess && !approveOutline.isError)
 
-  const actionError =
-    startAnalysis.isError || approveOutline.isError || outlineQuery.isError
-      ? getErrorMessage(
-          startAnalysis.error ??
-            approveOutline.error ??
-            outlineQuery.error,
-          "Action failed."
-        )
+  const isAnalyzeBusy =
+    isAnalyzing || startAnalysis.isPending || documentQuery.isPending
+
+  const analyzeError = startAnalysis.isError
+    ? getErrorMessage(startAnalysis.error, "Analysis failed.")
+    : null
+
+  const approveError = approveOutline.isError
+    ? getErrorMessage(approveOutline.error, "Approve failed.")
+    : null
+
+  const outlineLoadError =
+    outlineQuery.isError && !outline
+      ? getErrorMessage(outlineQuery.error, "Failed to load outline.")
       : null
 
   const showAnalyzeHint =
@@ -150,33 +154,61 @@ export default function StudioDocumentPage() {
           <Input
             value={regulationType}
             onChange={(ev) => setRegulationType(ev.target.value)}
-            disabled={isBusy}
+            disabled={isAnalyzeBusy || approveOutline.isPending}
           />
         </label>
         <Button
           type="button"
-          disabled={isBusy || document?.status === "Failed"}
+          disabled={
+            isAnalyzeBusy ||
+            approveOutline.isPending ||
+            document?.status === "Failed"
+          }
           onClick={runAnalysis}
         >
           {isAnalyzing || startAnalysis.isPending
             ? "Analyzing…"
             : "Run analysis"}
         </Button>
-        {outline ? (
+        {outline && !isOutlineApproved ? (
           <Button
             type="button"
             variant="secondary"
-            disabled={isBusy}
+            disabled={isAnalyzeBusy || approveOutline.isPending}
             onClick={() => approveOutline.mutate()}
           >
             {approveOutline.isPending ? "Approving…" : "Approve outline"}
           </Button>
         ) : null}
+        {isOutlineApproved ? (
+          <span className="inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            Outline approved
+          </span>
+        ) : null}
       </div>
 
-      {actionError ? (
+      {analyzeError ? (
         <p className="text-destructive text-sm" role="alert">
-          {actionError}
+          {analyzeError}
+        </p>
+      ) : null}
+
+      {approveError ? (
+        <p className="text-destructive text-sm" role="alert">
+          {approveError}
+        </p>
+      ) : null}
+
+      {outlineLoadError ? (
+        <p className="text-destructive text-sm" role="alert">
+          {outlineLoadError}
+        </p>
+      ) : null}
+
+      {approveOutline.isSuccess && isOutlineApproved ? (
+        <p className="text-muted-foreground text-sm" role="status">
+          This outline is approved and ready for vault assignment and role
+          training.
         </p>
       ) : null}
 

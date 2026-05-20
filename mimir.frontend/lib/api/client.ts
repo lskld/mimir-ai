@@ -32,6 +32,10 @@ function formatApiErrorMessage(status: number, body: unknown): string {
     const t = (body as ProblemDetails).title
     if (typeof t === "string" && t.length > 0) return t
   }
+  if (body && typeof body === "object" && "message" in body) {
+    const m = (body as { message?: string }).message
+    if (typeof m === "string" && m.length > 0) return m
+  }
   return `Request failed (${status})`
 }
 

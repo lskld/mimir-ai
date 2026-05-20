@@ -27,7 +27,12 @@ export function useApproveOutlineMutation(documentId: string) {
   return useMutation({
     mutationFn: () => approveOutline(documentId),
     onSuccess: (data) => {
-      queryClient.setQueryData(queryKeys.outlines.detail(documentId), data)
+      if (data) {
+        queryClient.setQueryData(queryKeys.outlines.detail(documentId), data)
+      }
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.outlines.detail(documentId),
+      })
     },
   })
 }

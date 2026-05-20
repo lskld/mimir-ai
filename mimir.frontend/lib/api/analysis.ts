@@ -105,11 +105,35 @@ export async function approveOutline(
   documentId: string,
   signal?: AbortSignal
 ): Promise<TrainingOutlineResponse> {
-  return apiJson<TrainingOutlineResponse>(
-    `/api/analysis/${documentId}/approve`,
-    {
-      method: "POST",
-      signal,
-    }
-  )
+  const res = await apiFetch(`/api/analysis/${documentId}/approve`, {
+    method: "POST",
+    signal,
+  })
+
+  const text = await res.text()
+  const body = parseBody(text)
+
+  if (!res.ok) {
+    const message =
+      typeof body === "string"
+        ? body
+        : body &&
+            typeof body === "object" &&
+            "detail" in body &&
+            typeof (body as { detail?: string }).detail === "string"
+          ? (body as { detail: string }).detail
+          : body &&
+              typeof body === "object" &&
+              "message" in body &&
+              typeof (body as { message?: string }).message === "string"
+            ? (body as { message: string }).message
+            : `Approve failed (${res.status})`
+    throw new ApiError(message, res.status, body)
+  }
+
+  if (body && typeof body === "object" && "sections" in body) {
+    return body as TrainingOutlineResponse
+  }
+
+  return getOutline(documentId, signal)
 }

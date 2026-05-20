@@ -17,13 +17,26 @@ export function DocumentOutlineView({
             · {outline.sections.length} sections
           </span>
         </h2>
-        <p className="text-muted-foreground text-sm">
-          Generated{" "}
-          {new Date(outline.generatedAt).toLocaleString(undefined, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })}
-        </p>
+        <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
+          <span>
+            Generated{" "}
+            {new Date(outline.generatedAt).toLocaleString(undefined, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          </span>
+          {outline.status ? (
+            <span
+              className={
+                outline.status === "Approved"
+                  ? "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400"
+                  : "rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium"
+              }
+            >
+              {outline.status}
+            </span>
+          ) : null}
+        </div>
       </header>
 
       <ol className="space-y-10">
