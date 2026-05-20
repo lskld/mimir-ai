@@ -394,7 +394,7 @@ function CitationsBlock({
       ) : null}
       <ul className="space-y-2">
         {citations.map((c, i) => (
-          <li key={c.chunkId || i} className="border-l-2 border-primary/40 pl-3 space-y-0.5">
+          <li key={`${c.chunkId}-${i}`} className="border-l-2 border-primary/40 pl-3 space-y-0.5">
             <p className="text-xs text-foreground/90 leading-relaxed italic">
               &ldquo;{c.text}&rdquo;
             </p>
