@@ -32,7 +32,7 @@ export default function RootLayout({
     <html
       lang="en"
       className={cn(
-        "dark h-full antialiased font-sans",
+        "h-full antialiased font-sans",
         dmSans.variable,
         jetbrainsMono.variable
       )}

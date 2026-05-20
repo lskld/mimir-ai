@@ -62,71 +62,65 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/*
- * Mimir AI design tokens.
- *
- * Dark-only product: the same palette is mirrored on :root and .dark so utilities
- * with and without the `dark:` prefix resolve to the right values.
- */
-:root,
-.dark {
+/* Mimir AI design tokens — light mode */
+:root {
   /* Surfaces */
-  --background: #0F1117;
-  --foreground: #F0F2F7;
-  --surface: #16181F;
-  --surface-elevated: #1E2028;
-  --card: #16181F;
-  --card-foreground: #F0F2F7;
-  --popover: #1E2028;
-  --popover-foreground: #F0F2F7;
+  --background: #F5F7FA;
+  --foreground: #0F1117;
+  --surface: #FFFFFF;
+  --surface-elevated: #EEF1F6;
+  --card: #FFFFFF;
+  --card-foreground: #0F1117;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F1117;
 
   /* Primary (blue) */
   --primary: #3B7FF5;
   --primary-foreground: #FFFFFF;
   --primary-hover: #2D6FE0;
-  --blue-subtle: #1A3A6B;
+  --blue-subtle: #EBF2FF;
   --blue-glow: rgba(59, 127, 245, 0.15);
 
   /* Secondary surfaces */
-  --secondary: #1E2028;
-  --secondary-foreground: #F0F2F7;
-  --muted: #16181F;
-  --muted-foreground: #8B90A0;
-  --accent: #1E2028;
-  --accent-foreground: #F0F2F7;
-  --text-muted-extra: #555A6B;
+  --secondary: #EEF1F6;
+  --secondary-foreground: #0F1117;
+  --muted: #EEF1F6;
+  --muted-foreground: #6B7280;
+  --accent: #EEF1F6;
+  --accent-foreground: #0F1117;
+  --text-muted-extra: #9CA3AF;
 
   /* Status */
-  --success: #22C55E;
-  --success-subtle: #14532D;
-  --warning: #F59E0B;
-  --warning-subtle: #78350F;
-  --destructive: #EF4444;
-  --destructive-subtle: #7F1D1D;
+  --success: #16A34A;
+  --success-subtle: #DCFCE7;
+  --warning: #D97706;
+  --warning-subtle: #FEF3C7;
+  --destructive: #DC2626;
+  --destructive-subtle: #FEE2E2;
 
   /* Borders & inputs */
-  --border: #2A2D37;
-  --border-accent: #3B4055;
-  --input: #2A2D37;
+  --border: #E2E6ED;
+  --border-accent: #C9CDD6;
+  --input: #E2E6ED;
   --ring: #3B7FF5;
 
   /* Charts (reserved) */
   --chart-1: #3B7FF5;
-  --chart-2: #22C55E;
-  --chart-3: #F59E0B;
-  --chart-4: #8B90A0;
-  --chart-5: #1A3A6B;
+  --chart-2: #16A34A;
+  --chart-3: #D97706;
+  --chart-4: #6B7280;
+  --chart-5: #EBF2FF;
 
   --radius: 0.625rem;
 
   /* Sidebar */
-  --sidebar: #16181F;
-  --sidebar-foreground: #F0F2F7;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #0F1117;
   --sidebar-primary: #3B7FF5;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #1E2028;
-  --sidebar-accent-foreground: #F0F2F7;
-  --sidebar-border: #2A2D37;
+  --sidebar-accent: #EEF1F6;
+  --sidebar-accent-foreground: #0F1117;
+  --sidebar-border: #E2E6ED;
   --sidebar-ring: #3B7FF5;
 }
 
@@ -140,7 +134,7 @@
   }
   html {
     @apply font-sans;
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   /* Headings get the display font */
@@ -149,7 +143,6 @@
     letter-spacing: -0.01em;
   }
 
-  /* Subtle scrollbar polish for dark surfaces */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
