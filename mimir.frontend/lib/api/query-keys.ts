@@ -10,6 +10,13 @@ export const queryKeys = {
     detail: (documentId: string) =>
       [...queryKeys.outlines.all, documentId] as const,
   },
+  training: {
+    all: ["training"] as const,
+    status: (roleId: string) =>
+      [...queryKeys.training.all, roleId, "status"] as const,
+    outline: (roleId: string) =>
+      [...queryKeys.training.all, roleId, "outline"] as const,
+  },
   hierarchy: {
     all: ["hierarchy"] as const,
   },

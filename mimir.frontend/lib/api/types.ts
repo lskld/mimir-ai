@@ -40,6 +40,13 @@ export interface TrainingOutlineResponse {
   status?: "Draft" | "Approved" | string
 }
 
+export interface RoleTrainingStatusResponse {
+  roleId: string
+  status: "Pending" | "Generating" | "Ready" | "Failed" | string
+  lastUpdated: string | null
+  errorMessage?: string | null
+}
+
 export interface AnalyzeDocumentRequest {
   documentId: string
   regulationType: string

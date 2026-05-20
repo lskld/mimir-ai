@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { AssignDocumentForm } from "@/components/vault/assign-document-form"
 import { VaultDocumentsTable } from "@/components/vault/vault-documents-table"
+import { RoleTrainingPanel } from "./role-training-panel"
 import { getErrorMessage } from "@/lib/api/error-message"
 import {
   useRoleResolvedDocuments,
@@ -101,6 +102,8 @@ export function HierarchyAssignPanel({ target }: HierarchyAssignPanelProps) {
           )}
         </section>
       ) : null}
+
+      {target.type === "Role" ? <RoleTrainingPanel roleId={target.id} /> : null}
 
       <p className="text-muted-foreground text-xs">
         Upload or analyze documents in{" "}
