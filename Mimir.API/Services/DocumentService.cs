@@ -57,6 +57,12 @@ public class DocumentService(
         return MapToResponse(persisted);
     }
 
+    public async Task<List<DocumentResponse>> GetAllDocumentsAsync()
+    {
+        var documents = await documentRepository.GetAllDocumentsAsync();
+        return documents.Select(MapToResponse).ToList();
+    }
+
     public async Task<DocumentResponse> GetDocumentAsync(Guid documentId)
     {
         var document = await documentRepository.GetDocumentAsync(documentId)
