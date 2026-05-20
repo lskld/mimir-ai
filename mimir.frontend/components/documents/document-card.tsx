@@ -44,10 +44,10 @@ export function DocumentCard({ document }: DocumentCardProps) {
     (startAnalysis.isPending || liveStatus === "Pending" || liveStatus === "Parsed")
 
   const status = (() => {
-    if (liveStatus === "Failed") return "Failed"
+    if (liveStatus === "Failed" || outlineQuery.isError) return "Failed"
     if (isApproved) return "Approved"
     if (outline) return "Analyzed"
-    if (isAnalyzing || liveStatus === "Pending" || liveStatus === "Parsed") {
+    if (isAnalyzing || liveStatus === "Parsed") {
       return "Generating"
     }
     return "Pending"
