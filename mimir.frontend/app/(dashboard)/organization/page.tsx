@@ -48,7 +48,7 @@ export default function OrganizationPage() {
   const departments = selectedOrg?.departments ?? []
   const roles = selectedDept?.roles ?? []
 
-  const detailTarget = buildDetailTarget(selectedOrg, selectedDept, selectedRole)
+  const detailTarget = buildDetailTarget(selectedOrg, selectedDept, selectedRole, userSelection)
 
   const hasAny = orgs.length > 0
 
@@ -211,9 +211,10 @@ function resolveSelection(
 function buildDetailTarget(
   org: OrganizationLevelResponse | null,
   dept: DepartmentResponse | null,
-  role: RoleResponse | null
+  role: RoleResponse | null,
+  userSelection: Selection,
 ): VaultTarget | null {
-  if (role && org && dept) {
+  if (userSelection.roleId && role && org && dept) {
     return {
       type: "Role",
       id: role.id,
@@ -221,7 +222,7 @@ function buildDetailTarget(
       path: `${org.name} / ${dept.name} / ${role.name}`,
     }
   }
-  if (dept && org) {
+  if (userSelection.deptId && dept && org) {
     return {
       type: "Department",
       id: dept.id,
