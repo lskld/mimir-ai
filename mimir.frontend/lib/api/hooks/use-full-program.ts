@@ -17,9 +17,7 @@ export function useFullProgramStatus(roleId: string | null) {
     queryFn: ({ signal }) => getFullProgramStatus(roleId!, signal),
     enabled: Boolean(roleId),
     refetchInterval: (query) => {
-      if (!query.state.data) return FULL_PROGRAM_POLL_INTERVAL_MS
-      if (query.state.data.status === "Generating")
-        return FULL_PROGRAM_POLL_INTERVAL_MS
+      if (query.state.data?.status === "Generating") return FULL_PROGRAM_POLL_INTERVAL_MS
       return false
     },
   })

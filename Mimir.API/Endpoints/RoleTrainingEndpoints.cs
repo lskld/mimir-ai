@@ -121,6 +121,7 @@ public static class RoleTrainingEndpoints
                 });
 
             var response = JsonSerializer.Deserialize<TrainingOutlineResponse>(outline.RawJson!, JsonOptions);
+            if (response is not null) response.Status = outline.Status;
 
             logger.LogDebug("Retrieved training outline for role {RoleId}", roleId);
 
@@ -149,6 +150,7 @@ public static class RoleTrainingEndpoints
             if (outline.Status == "Approved")
             {
                 var alreadyApproved = JsonSerializer.Deserialize<TrainingOutlineResponse>(outline.RawJson!, JsonOptions);
+                if (alreadyApproved is not null) alreadyApproved.Status = "Approved";
                 return Results.Ok(alreadyApproved);
             }
 
@@ -160,6 +162,7 @@ public static class RoleTrainingEndpoints
             logger.LogInformation("Training approved for role {RoleId}", roleId);
 
             var response = JsonSerializer.Deserialize<TrainingOutlineResponse>(updated.RawJson!, JsonOptions);
+            if (response is not null) response.Status = "Approved";
             return Results.Ok(response);
         });
     }

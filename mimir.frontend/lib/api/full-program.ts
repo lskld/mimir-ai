@@ -68,11 +68,27 @@ export async function generateFullProgram(
 export async function getFullProgramStatus(
   roleId: string,
   signal?: AbortSignal
-): Promise<FullProgramStatusResponse> {
-  return apiJson<FullProgramStatusResponse>(
-    `/api/training/roles/${roleId}/full-program/status`,
-    { method: "GET", signal }
-  )
+): Promise<FullProgramStatusResponse | null> {
+  const res = await apiFetch(`/api/training/roles/${roleId}/full-program/status`, {
+    method: "GET",
+    signal,
+  })
+
+  if (res.status === 404) return null
+
+  const text = await res.text()
+  const body = parseBody(text)
+
+  if (!res.ok) {
+    const message =
+      body && typeof body === "object" && "detail" in body &&
+      typeof (body as { detail?: string }).detail === "string"
+        ? (body as { detail: string }).detail
+        : `Full program status failed (${res.status})`
+    throw new ApiError(message, res.status, body)
+  }
+
+  return body as FullProgramStatusResponse
 }
 
 /** Returns program on success, `null` if not ready (409 or 404). */
