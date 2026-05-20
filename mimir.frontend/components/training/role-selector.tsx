@@ -1,8 +1,6 @@
 "use client"
 
 import { Building2, UserCircle } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-import { RiskBadge } from "@/components/mimir/risk-badge"
 import { cn } from "@/lib/utils"
 import type {
   OrganizationLevelResponse,
@@ -96,16 +94,6 @@ export function RoleSelector({
                   </p>
                 </div>
               </div>
-              {role.status === "Published" ? (
-                <Badge variant="success" size="sm">Published</Badge>
-              ) : (
-                <Badge variant="warning" size="sm">Draft</Badge>
-              )}
-            </div>
-            <div className="mt-1 flex flex-wrap gap-1">
-              <RiskBadge type="AML" risk={role.amlRisk} />
-              <RiskBadge type="Sanctions" risk={role.sanctionsRisk} />
-              <RiskBadge type="Fraud" risk={role.fraudRisk} />
             </div>
           </button>
         )

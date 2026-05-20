@@ -110,7 +110,6 @@ export function TrainingPipeline({ role }: TrainingPipelineProps) {
             stageIndex={1}
             currentStage={currentStage}
             title="Documents this role inherits"
-            description="Mimir uses these regulations to ground every module. Manage the vault on the Organization page."
             icon={FileText}
           >
             {resolvedQuery.isPending ? (
@@ -132,9 +131,6 @@ export function TrainingPipeline({ role }: TrainingPipelineProps) {
                         {doc.inheritedFromName ? ` · ${doc.inheritedFromName}` : ""}
                       </p>
                     </div>
-                    <Badge variant="outline" size="sm">
-                      {formatInheritedFrom(doc.inheritedFrom)}
-                    </Badge>
                   </li>
                 ))}
               </ul>
@@ -146,7 +142,6 @@ export function TrainingPipeline({ role }: TrainingPipelineProps) {
             stageIndex={2}
             currentStage={currentStage}
             title="Generate role outline"
-            description="Mimir merges every inherited document and customizes a curriculum to this role's risk profile."
             icon={Sparkles}
             badge={
               <StatusBadge
@@ -163,7 +158,7 @@ export function TrainingPipeline({ role }: TrainingPipelineProps) {
             {outlineStatus === "Generating" ? (
               <GeneratingHint
                 title="Generating outline"
-                detail="Polling every 2 seconds. Usually 30–60 seconds for a single regulation."
+                detail="Usually 30–60 seconds."
               />
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
@@ -214,7 +209,6 @@ export function TrainingPipeline({ role }: TrainingPipelineProps) {
             stageIndex={3}
             currentStage={currentStage}
             title="Review & approve outline"
-            description="Inspect the modules Mimir drafted. Approve to unlock the full program."
             icon={CheckCircle2}
             badge={
               outline ? (
@@ -284,7 +278,6 @@ export function TrainingPipeline({ role }: TrainingPipelineProps) {
             stageIndex={4}
             currentStage={currentStage}
             title="Generate full program"
-            description="Mimir writes lessons, quizzes, and case studies for every objective. This is the big one — 2–5 minutes."
             icon={Workflow}
             badge={
               <StatusBadge
@@ -296,7 +289,7 @@ export function TrainingPipeline({ role }: TrainingPipelineProps) {
             {programStatus === "Generating" ? (
               <GeneratingHint
                 title="Generating full program"
-                detail="Polling every 4 seconds. Roughly 50 LLM calls. Sit tight."
+                detail="Usually 2–5 minutes."
               />
             ) : null}
             {programStatus === "Failed" && programStatusQuery.data?.errorMessage ? (
@@ -350,7 +343,6 @@ export function TrainingPipeline({ role }: TrainingPipelineProps) {
             stageIndex={5}
             currentStage={currentStage}
             title="Export SCORM"
-            description="Download a SCORM 1.2 ZIP. Drop it into any LMS that speaks SCORM."
             icon={Download}
           >
             {isProgramReady ? (
@@ -429,15 +421,6 @@ export function TrainingPipeline({ role }: TrainingPipelineProps) {
               <SummaryStat label="Fraud" value={role.fraudRisk} />
               <SummaryStat label="Docs" value={role.documentationRisk} />
             </div>
-          </div>
-          <div className="rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground space-y-2">
-            <p className="font-semibold text-foreground">How this works</p>
-            <p>
-              Mimir reads every regulation assigned to this role, drafts a
-              role-tuned outline, and turns each objective into a lesson +
-              quiz + scenario. The whole pipeline is grounded in your source
-              documents.
-            </p>
           </div>
         </aside>
       </div>
