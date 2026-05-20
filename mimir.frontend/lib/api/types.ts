@@ -153,3 +153,46 @@ export interface VaultCatalogDocument {
   fileName: string
   assignments: VaultCatalogAssignment[]
 }
+
+export interface FullProgramStatusResponse {
+  status: "Generating" | "Ready" | "Failed" | string
+  roleId: string
+  errorMessage: string | null
+}
+
+export interface QuizQuestionResponse {
+  text: string
+  options: Record<"A" | "B" | "C" | "D", string>
+  correctAnswer: string
+  explanation: string
+}
+
+export interface LessonObjectiveResponse {
+  objective: string
+  lessonContent: string
+  quizQuestions: QuizQuestionResponse[]
+}
+
+export interface ScenarioResponse {
+  title: string
+  description: string
+  complication: string
+  discussionQuestions: string[]
+}
+
+export interface FullTrainingModuleResponse {
+  moduleTitle: string
+  amlrArticle: string | null
+  description: string | null
+  objectives: LessonObjectiveResponse[]
+  scenarios: ScenarioResponse[]
+}
+
+export interface FullTrainingProgramResponse {
+  roleId: string
+  roleName: string
+  regulationType: string
+  riskProfile: Record<string, string> | null
+  generatedAt: string
+  modules: FullTrainingModuleResponse[]
+}

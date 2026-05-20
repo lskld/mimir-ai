@@ -17,6 +17,13 @@ export const queryKeys = {
     outline: (roleId: string) =>
       [...queryKeys.training.all, roleId, "outline"] as const,
   },
+  fullProgram: {
+    all: ["fullProgram"] as const,
+    status: (roleId: string) =>
+      [...queryKeys.fullProgram.all, roleId, "status"] as const,
+    detail: (roleId: string) =>
+      [...queryKeys.fullProgram.all, roleId] as const,
+  },
   hierarchy: {
     all: ["hierarchy"] as const,
   },

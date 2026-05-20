@@ -24,7 +24,7 @@ export function RoleTrainingPanel({ roleId }: RoleTrainingPanelProps) {
   const outline = outlineQuery.data
 
   const approveMutation = useApproveRoleOutlineMutation(roleId)
-  const isApproved = outline?.status === "Approved"
+  const isApproved = approveMutation.isSuccess
   const isEmpty = isReady && outline && outline.sections.length === 0
 
   const isGenerateBusy = generateMutation.isPending || statusQuery.isPending
