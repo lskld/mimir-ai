@@ -165,6 +165,11 @@ export function TrainingPipeline({ role }: TrainingPipelineProps) {
               <Button
                 onClick={() =>
                   generateOutline.mutate(undefined, {
+                    onSuccess: () =>
+                      toast({
+                        title: "Generating outline",
+                        description: "Usually takes 30–60 seconds.",
+                      }),
                     onError: (err) =>
                       toast({
                         title: "Could not start outline",
@@ -300,6 +305,11 @@ export function TrainingPipeline({ role }: TrainingPipelineProps) {
             <Button
               onClick={() =>
                 generateProgram.mutate(undefined, {
+                  onSuccess: () =>
+                    toast({
+                      title: "Generating full program",
+                      description: "Usually takes 2–5 minutes.",
+                    }),
                   onError: (err) =>
                     toast({
                       title: "Could not start program",
