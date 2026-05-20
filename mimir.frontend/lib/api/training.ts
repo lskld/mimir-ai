@@ -1,5 +1,5 @@
 import { apiFetch, apiJson, ApiError } from "./client"
-import type { AnalyzeDocumentRequest, TrainingOutlineResponse } from "./types"
+import type { RoleTrainingStatusResponse, TrainingOutlineResponse } from "./types"
 
 function parseBody(text: string): unknown {
   const trimmed = text.trim()
@@ -11,29 +11,20 @@ function parseBody(text: string): unknown {
   }
 }
 
-export async function startAnalysis(
-  body: AnalyzeDocumentRequest,
+export async function generateRoleOutline(
+  roleId: string,
   signal?: AbortSignal
-): Promise<{ documentId: string }> {
-  const res = await apiFetch("/api/analysis", {
+): Promise<{ roleId: string; status: string; message: string }> {
+  const res = await apiFetch(`/api/training/roles/${roleId}/generate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
     signal,
   })
 
   const text = await res.text()
-  const json = parseBody(text) as { documentId?: string } | string | null
-
-  if (res.status === 202) {
-    const id =
-      typeof json === "object" && json !== null && "documentId" in json
-        ? json.documentId
-        : undefined
-    if (id) {
-      return { documentId: id }
-    }
-  }
+  const json = parseBody(text) as
+    | { roleId?: string; status?: string; message?: string }
+    | string
+    | null
 
   if (!res.ok) {
     const message =
@@ -44,27 +35,51 @@ export async function startAnalysis(
             "detail" in json &&
             typeof (json as { detail?: string }).detail === "string"
           ? (json as { detail: string }).detail
-          : `Analysis start failed (${res.status})`
+          : `Training generation failed (${res.status})`
     throw new ApiError(message, res.status, json)
   }
 
   return {
-    documentId:
+    roleId:
       (typeof json === "object" &&
         json !== null &&
-        "documentId" in json &&
-        typeof (json as { documentId?: string }).documentId === "string"
-        ? (json as { documentId: string }).documentId
-        : body.documentId),
+        "roleId" in json &&
+        typeof (json as { roleId?: string }).roleId === "string"
+        ? (json as { roleId: string }).roleId
+        : roleId),
+    status:
+      (typeof json === "object" &&
+        json !== null &&
+        "status" in json &&
+        typeof (json as { status?: string }).status === "string"
+        ? (json as { status: string }).status
+        : "Generating"),
+    message:
+      (typeof json === "object" &&
+        json !== null &&
+        "message" in json &&
+        typeof (json as { message?: string }).message === "string"
+        ? (json as { message: string }).message
+        : "Training generation started"),
   }
 }
 
-/** Returns outline on success, `null` if not ready (404), `null` if still in progress (409). */
-export async function tryGetOutline(
-  documentId: string,
+export async function getRoleTrainingStatus(
+  roleId: string,
+  signal?: AbortSignal
+): Promise<RoleTrainingStatusResponse> {
+  return apiJson<RoleTrainingStatusResponse>(
+    `/api/training/roles/${roleId}/status`,
+    { method: "GET", signal }
+  )
+}
+
+/** Returns outline on success, `null` if not ready (409), `null` if still in progress (409). */
+export async function getRoleTrainingOutline(
+  roleId: string,
   signal?: AbortSignal
 ): Promise<TrainingOutlineResponse | null> {
-  const res = await apiFetch(`/api/analysis/${documentId}/outline`, {
+  const res = await apiFetch(`/api/training/roles/${roleId}/outline`, {
     method: "GET",
     signal,
   })
@@ -90,22 +105,11 @@ export async function tryGetOutline(
   return body as TrainingOutlineResponse
 }
 
-export async function getOutline(
-  documentId: string,
+export async function approveRoleOutline(
+  roleId: string,
   signal?: AbortSignal
 ): Promise<TrainingOutlineResponse> {
-  const outline = await tryGetOutline(documentId, signal)
-  if (!outline) {
-    throw new ApiError("Outline not available", 404, null)
-  }
-  return outline
-}
-
-export async function approveOutline(
-  documentId: string,
-  signal?: AbortSignal
-): Promise<TrainingOutlineResponse> {
-  const res = await apiFetch(`/api/analysis/${documentId}/approve`, {
+  const res = await apiFetch(`/api/training/roles/${roleId}/approve`, {
     method: "POST",
     signal,
   })
@@ -135,5 +139,5 @@ export async function approveOutline(
     return body as TrainingOutlineResponse
   }
 
-  return getOutline(documentId, signal)
+  throw new ApiError("Approve failed: invalid response shape", res.status, body)
 }

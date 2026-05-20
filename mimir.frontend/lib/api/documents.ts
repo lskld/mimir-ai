@@ -44,6 +44,15 @@ export async function uploadDocument(
   return body as DocumentResponse
 }
 
+export async function listDocuments(
+  signal?: AbortSignal
+): Promise<DocumentResponse[]> {
+  return apiJson<DocumentResponse[]>("/api/documents", {
+    method: "GET",
+    signal,
+  })
+}
+
 export async function getDocument(
   documentId: string,
   signal?: AbortSignal

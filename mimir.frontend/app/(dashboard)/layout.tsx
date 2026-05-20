@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  BookOpen,
   Eye,
   FileText,
   GraduationCap,
@@ -38,6 +39,11 @@ export default function DashboardLayout({
       label: "Studio",
       href: "/studio",
       icon: GraduationCap,
+    },
+    {
+      label: "Programs",
+      href: "/programs",
+      icon: BookOpen,
     },
     {
       label: "Employees",
