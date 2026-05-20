@@ -8,4 +8,5 @@ public class TrainingOutlineResponse
     public Dictionary<string, string>? RiskProfile { get; set; }
     public List<OutlineSectionResponse> Sections { get; set; } = [];
     public DateTime GeneratedAt { get; set; }
+    public string? Status { get; set; }
 }

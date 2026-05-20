@@ -12,17 +12,20 @@ export function flattenHierarchyTargets(
   orgs: OrganizationLevelResponse[]
 ): VaultTarget[] {
   const targets: VaultTarget[] = []
+  const seen = new Set<string>()
+
+  const add = (t: VaultTarget) => {
+    const key = `${t.type}-${t.id}`
+    if (seen.has(key)) return
+    seen.add(key)
+    targets.push(t)
+  }
 
   for (const org of orgs) {
-    targets.push({
-      type: "OrganizationLevel",
-      id: org.id,
-      name: org.name,
-      path: org.name,
-    })
+    add({ type: "OrganizationLevel", id: org.id, name: org.name, path: org.name })
 
     for (const dept of org.departments ?? []) {
-      targets.push({
+      add({
         type: "Department",
         id: dept.id,
         name: dept.name,
@@ -30,7 +33,7 @@ export function flattenHierarchyTargets(
       })
 
       for (const role of dept.roles ?? []) {
-        targets.push({
+        add({
           type: "Role",
           id: role.id,
           name: role.name,

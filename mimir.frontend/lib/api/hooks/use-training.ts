@@ -17,8 +17,8 @@ export function useRoleTrainingStatus(roleId: string | null) {
     queryFn: ({ signal }) => getRoleTrainingStatus(roleId!, signal),
     enabled: Boolean(roleId),
     refetchInterval: (query) => {
-      if (!query.state.data) return TRAINING_POLL_INTERVAL_MS
-      if (query.state.data.status === "Generating") return TRAINING_POLL_INTERVAL_MS
+      if (query.state.error) return false
+      if (query.state.data?.status === "Generating") return TRAINING_POLL_INTERVAL_MS
       return false
     },
   })

@@ -11,6 +11,9 @@ public interface IDocumentRepository
     /// <summary>Returns the document with the given id, or null if not found.</summary>
     Task<Document?> GetDocumentAsync(Guid documentId);
 
+    /// <summary>Returns all documents, ordered by upload date descending.</summary>
+    Task<List<Document>> GetAllDocumentsAsync();
+
     /// <summary>Updates the status field of the document and returns the updated entity.</summary>
     Task<Document> UpdateDocumentStatusAsync(Guid documentId, string status);
 

@@ -46,6 +46,7 @@ public static class AnalysisEndpoints
                 return Results.Conflict(new { message = "Analysis is still in progress." });
 
             var response = JsonSerializer.Deserialize<TrainingOutlineResponse>(outline.RawJson, JsonOptions);
+            if (response is not null) response.Status = outline.Status;
             return Results.Ok(response);
         });
 
@@ -60,6 +61,7 @@ public static class AnalysisEndpoints
 
             var approved = await outlineRepository.UpdateOutlineStatusAsync(outline.Id, "Approved");
             var response = JsonSerializer.Deserialize<TrainingOutlineResponse>(approved.RawJson, JsonOptions);
+            if (response is not null) response.Status = approved.Status;
             return Results.Ok(response);
         });
     }

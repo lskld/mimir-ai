@@ -19,6 +19,13 @@ public class DocumentRepository(AppDbContext context) : IDocumentRepository
             .FirstOrDefaultAsync(d => d.Id == documentId);
     }
 
+    public async Task<List<Document>> GetAllDocumentsAsync()
+    {
+        return await context.Documents
+            .OrderByDescending(d => d.UploadedAt)
+            .ToListAsync();
+    }
+
     public async Task<Document> UpdateDocumentStatusAsync(Guid documentId, string status)
     {
         var document = await context.Documents.FindAsync(documentId)

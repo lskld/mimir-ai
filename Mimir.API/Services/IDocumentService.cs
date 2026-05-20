@@ -12,4 +12,7 @@ public interface IDocumentService
 
     /// <summary>Returns the document response for the given id, or throws <see cref="KeyNotFoundException"/> if not found.</summary>
     Task<DocumentResponse> GetDocumentAsync(Guid documentId);
+
+    /// <summary>Returns all documents ordered by upload date descending.</summary>
+    Task<List<DocumentResponse>> GetAllDocumentsAsync();
 }

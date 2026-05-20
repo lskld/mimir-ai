@@ -8,8 +8,22 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-heading: var(--font-heading);
+
+  /* Mimir extended palette */
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-border-accent: var(--border-accent);
+  --color-blue-subtle: var(--blue-subtle);
+  --color-blue-glow: var(--blue-glow);
+  --color-text-muted-extra: var(--text-muted-extra);
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-destructive-subtle: var(--destructive-subtle);
+
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,83 +62,134 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Mimir AI design tokens — light mode */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
+  /* Surfaces */
+  --background: #F5F7FA;
+  --foreground: #0F1117;
+  --surface: #FFFFFF;
+  --surface-elevated: #EEF1F6;
+  --card: #FFFFFF;
+  --card-foreground: #0F1117;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F1117;
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* Primary (blue) */
+  --primary: #3B7FF5;
+  --primary-foreground: #FFFFFF;
+  --primary-hover: #2D6FE0;
+  --blue-subtle: #EBF2FF;
+  --blue-glow: rgba(59, 127, 245, 0.15);
+
+  /* Secondary surfaces */
+  --secondary: #EEF1F6;
+  --secondary-foreground: #0F1117;
+  --muted: #EEF1F6;
+  --muted-foreground: #6B7280;
+  --accent: #EEF1F6;
+  --accent-foreground: #0F1117;
+  --text-muted-extra: #9CA3AF;
+
+  /* Status */
+  --success: #16A34A;
+  --success-subtle: #DCFCE7;
+  --warning: #D97706;
+  --warning-subtle: #FEF3C7;
+  --destructive: #DC2626;
+  --destructive-subtle: #FEE2E2;
+
+  /* Borders & inputs */
+  --border: #E2E6ED;
+  --border-accent: #C9CDD6;
+  --input: #E2E6ED;
+  --ring: #3B7FF5;
+
+  /* Charts (reserved) */
+  --chart-1: #3B7FF5;
+  --chart-2: #16A34A;
+  --chart-3: #D97706;
+  --chart-4: #6B7280;
+  --chart-5: #EBF2FF;
+
+  --radius: 0.625rem;
+
+  /* Sidebar */
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #0F1117;
+  --sidebar-primary: #3B7FF5;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #EEF1F6;
+  --sidebar-accent-foreground: #0F1117;
+  --sidebar-border: #E2E6ED;
+  --sidebar-ring: #3B7FF5;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+  html,
   body {
     @apply bg-background text-foreground;
   }
   html {
     @apply font-sans;
+    color-scheme: light;
+  }
+
+  /* Headings get the display font */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading), var(--font-sans);
+    letter-spacing: -0.01em;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--border-accent);
+  }
+}
+
+@layer utilities {
+  /* Primary CTA with hover state from the spec */
+  .btn-primary-mimir {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .btn-primary-mimir:hover:not(:disabled) {
+    background-color: var(--primary-hover);
+  }
+
+  /* Pulsing dot used while generating */
+  .pulse-dot {
+    position: relative;
+  }
+  .pulse-dot::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background-color: currentColor;
+    opacity: 0.45;
+    animation: mimir-pulse 1.6s ease-out infinite;
+  }
+  @keyframes mimir-pulse {
+    0%   { transform: scale(1);   opacity: 0.45; }
+    80%  { transform: scale(2.2); opacity: 0; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+
+  /* Soft blue focus ring used on key actions */
+  .ring-blue-glow {
+    box-shadow: 0 0 0 4px var(--blue-glow);
   }
 }

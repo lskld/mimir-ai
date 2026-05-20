@@ -6,6 +6,12 @@ public static class DocumentEndpoints
 {
     public static void MapDocumentEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/documents", async (IDocumentService documentService) =>
+        {
+            var documents = await documentService.GetAllDocumentsAsync();
+            return Results.Ok(documents);
+        });
+
         app.MapPost("/api/documents/upload", async (
             IFormFile? file,
             [Microsoft.AspNetCore.Mvc.FromQuery] string? regulationType,

@@ -1,4 +1,4 @@
-import { apiFetch, apiJson, ApiError } from "./client"
+import { apiFetch, ApiError } from "./client"
 import type { AnalyzeDocumentRequest, TrainingOutlineResponse } from "./types"
 
 function parseBody(text: string): unknown {
